@@ -22,6 +22,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"time"
 
@@ -1507,6 +1508,57 @@ var _ = Describe("update_status", func() {
 					Expect(processGroup.ProcessGroupConditions).NotTo(HaveLen(0))
 				}
 			})
+		})
+	})
+
+	Context("when the database is unavailable and a process group has a stale PodPending condition", func() {
+		var cluster *fdbv1beta2.FoundationDBCluster
+		var adminClient *mock.AdminClient
+
+		BeforeEach(func() {
+			cluster = internal.CreateDefaultCluster()
+			Expect(setupClusterForTest(cluster)).NotTo(HaveOccurred())
+
+			var err error
+			adminClient, err = mock.NewMockAdminClientUncast(cluster, k8sClient)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should clear the PodPending condition", func() {
+			// Pick a storage process group and set a stale PodPending condition
+			// while the pod is actually Running.
+			pickedProcessGroup := internal.PickProcessGroups(cluster, fdbv1beta2.ProcessClassStorage, 1)[0]
+			pickedProcessGroup.UpdateCondition(fdbv1beta2.PodPending, true)
+			Expect(pickedProcessGroup.GetConditionTime(fdbv1beta2.PodPending)).NotTo(BeNil())
+
+			// Make the admin client return an error to simulate an unavailable database.
+			adminClient.MockError(fmt.Errorf("fdb timeout: database is unavailable"))
+
+			Expect(
+				internal.NormalizeClusterSpec(cluster, internal.DeprecationOptions{}),
+			).To(Succeed())
+			requeue := updateStatus{}.reconcile(
+				context.TODO(),
+				clusterReconciler,
+				cluster,
+				nil,
+				globalControllerLogger,
+			)
+
+			// updateStatus should requeue with an error since the DB is unavailable.
+			Expect(requeue).NotTo(BeNil())
+			Expect(requeue.curError).To(HaveOccurred())
+
+			// The PodPending condition should be cleared because the pod is Running.
+			_, err := reloadCluster(cluster)
+			Expect(err).NotTo(HaveOccurred())
+			for _, processGroup := range cluster.Status.ProcessGroups {
+				if processGroup.ProcessGroupID == pickedProcessGroup.ProcessGroupID {
+					Expect(processGroup.GetConditionTime(fdbv1beta2.PodPending)).To(BeNil())
+					return
+				}
+			}
+			Fail("process group not found in status")
 		})
 	})
 

@@ -74,9 +74,14 @@ func (c updateStatus) reconcile(
 			// When the status cannot be fetched, we have to assume that the cluster is unavailable and unhealthy.
 			cluster.Status.Health.Available = false
 			cluster.Status.Health.Healthy = false
+			// Even when the database status cannot be fetched, update conditions
+			// derived from Kubernetes pod state to prevent stale conditions like
+			// PodPending from persisting indefinitely.
+			refreshPodStateConditions(ctx, r, cluster, logger)
 			// Only update the status if it was changed.
 			if originalStatus.Health.Available != cluster.Status.Health.Available ||
-				originalStatus.Health.Healthy != cluster.Status.Health.Healthy {
+				originalStatus.Health.Healthy != cluster.Status.Health.Healthy ||
+				!equality.Semantic.DeepEqual(originalStatus.ProcessGroups, cluster.Status.ProcessGroups) {
 				logger.Info("database was marked as unavailable.")
 				// We ignore the error here since the controller will requeue anyways.
 				_ = r.updateOrApply(ctx, cluster)
@@ -557,6 +562,31 @@ func checkProcessMessagesForIOError(messages []fdbv1beta2.FoundationDBStatusProc
 	}
 
 	return false
+}
+
+// refreshPodStateConditions updates process group conditions that are derived
+// purely from Kubernetes pod state. This is called when the FDB status cannot
+// be fetched, to prevent conditions like PodPending from becoming stale when
+// the database is unavailable.
+func refreshPodStateConditions(
+	ctx context.Context,
+	r *FoundationDBClusterReconciler,
+	cluster *fdbv1beta2.FoundationDBCluster,
+	logger logr.Logger,
+) {
+	for _, processGroup := range cluster.Status.ProcessGroups {
+		pod, err := r.PodLifecycleManager.GetPod(ctx, r, cluster, processGroup.GetPodName(cluster))
+		if err != nil {
+			continue
+		}
+
+		if pod.Status.Phase == corev1.PodPending {
+			processGroup.UpdateCondition(fdbv1beta2.PodPending, true)
+			continue
+		}
+
+		processGroup.UpdateCondition(fdbv1beta2.PodPending, false)
+	}
 }
 
 // Validate and set progressGroup's status
