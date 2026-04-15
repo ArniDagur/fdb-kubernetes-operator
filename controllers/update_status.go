@@ -58,36 +58,24 @@ func (c updateStatus) reconcile(
 ) *requeue {
 	originalStatus := cluster.Status.DeepCopy()
 
-	// Refresh pod-level conditions before fetching FDB status. These checks
-	// only depend on Kubernetes state, so they run even when the database is
+	// Phase 1: Kubernetes-only pod health checks.
+	// Runs before the FDB status fetch so it works even when the database is
 	// unreachable. This prevents deadlocks where the database is down because
 	// too many pods are in a terminal state (e.g. evicted) and the operator
 	// can't clean them up because it can't fetch FDB status first.
 	refreshPodState(ctx, r, cluster, logger)
 
-	clusterStatus := fdbv1beta2.FoundationDBClusterStatus{}
-	clusterStatus.Generations.Reconciled = cluster.Status.Generations.Reconciled
-	clusterStatus.ProcessGroups = cluster.Status.ProcessGroups
-	clusterStatus.ConnectionString = cluster.Status.ConnectionString
-	// Initialize with the current desired storage servers per Pod
-	clusterStatus.StorageServersPerDisk = []int{cluster.GetStorageServersPerPod()}
-	clusterStatus.LogServersPerDisk = []int{cluster.GetLogServersPerPod()}
-	clusterStatus.ImageTypes = []fdbv1beta2.ImageType{cluster.DesiredImageType()}
-	processMap := make(map[fdbv1beta2.ProcessGroupID][]fdbv1beta2.FoundationDBStatusProcessInfo)
-
+	// Phase 2: Fetch FDB status.
 	if databaseStatus == nil {
 		var err error
 		databaseStatus, err = r.getStatusFromClusterOrDummyStatus(logger, cluster)
 		if err != nil {
-			// When the status cannot be fetched, we have to assume that the cluster is unavailable and unhealthy.
 			cluster.Status.Health.Available = false
 			cluster.Status.Health.Healthy = false
-			// Only update the status if it was changed.
 			if originalStatus.Health.Available != cluster.Status.Health.Available ||
 				originalStatus.Health.Healthy != cluster.Status.Health.Healthy ||
 				!equality.Semantic.DeepEqual(originalStatus.ProcessGroups, cluster.Status.ProcessGroups) {
 				logger.Info("database was marked as unavailable.")
-				// We ignore the error here since the controller will requeue anyways.
 				_ = r.updateOrApply(ctx, cluster)
 			}
 
@@ -97,6 +85,31 @@ func (c updateStatus) reconcile(
 			}
 		}
 	}
+
+	// Phase 3: FDB-dependent status updates.
+	return updateStatusFromFDB(ctx, r, cluster, databaseStatus, originalStatus, logger)
+}
+
+// updateStatusFromFDB updates cluster status fields that depend on the FDB
+// machine-readable status: process liveness, exclusion state, command line
+// correctness, cluster health, coordinator validity, etc. It also persists the
+// final status to the Kubernetes API.
+func updateStatusFromFDB(
+	ctx context.Context,
+	r *FoundationDBClusterReconciler,
+	cluster *fdbv1beta2.FoundationDBCluster,
+	databaseStatus *fdbv1beta2.FoundationDBStatus,
+	originalStatus *fdbv1beta2.FoundationDBClusterStatus,
+	logger logr.Logger,
+) *requeue {
+	clusterStatus := fdbv1beta2.FoundationDBClusterStatus{}
+	clusterStatus.Generations.Reconciled = cluster.Status.Generations.Reconciled
+	clusterStatus.ProcessGroups = cluster.Status.ProcessGroups
+	clusterStatus.ConnectionString = cluster.Status.ConnectionString
+	clusterStatus.StorageServersPerDisk = []int{cluster.GetStorageServersPerPod()}
+	clusterStatus.LogServersPerDisk = []int{cluster.GetLogServersPerPod()}
+	clusterStatus.ImageTypes = []fdbv1beta2.ImageType{cluster.DesiredImageType()}
+	processMap := make(map[fdbv1beta2.ProcessGroupID][]fdbv1beta2.FoundationDBStatusProcessInfo)
 
 	versionMap := map[string]int{}
 	for _, process := range databaseStatus.Cluster.Processes {
