@@ -57,24 +57,30 @@ func (c updateStatus) reconcile(
 	logger logr.Logger,
 ) *requeue {
 	originalStatus := cluster.Status.DeepCopy()
+	clusterStatus := fdbv1beta2.FoundationDBClusterStatus{}
+	clusterStatus.Generations.Reconciled = cluster.Status.Generations.Reconciled
+	clusterStatus.ProcessGroups = cluster.Status.ProcessGroups
+	clusterStatus.ConnectionString = cluster.Status.ConnectionString
+	clusterStatus.StorageServersPerDisk = []int{cluster.GetStorageServersPerPod()}
+	clusterStatus.LogServersPerDisk = []int{cluster.GetLogServersPerPod()}
+	clusterStatus.ImageTypes = []fdbv1beta2.ImageType{cluster.DesiredImageType()}
 
 	// Phase 1: Kubernetes-only pod health checks.
 	// Runs before the FDB status fetch so it works even when the database is
 	// unreachable. This prevents deadlocks where the database is down because
 	// too many pods are in a terminal state (e.g. evicted) and the operator
 	// can't clean them up because it can't fetch FDB status first.
-	refreshPodState(ctx, r, cluster, logger)
+	refreshPodState(ctx, r, cluster, &clusterStatus, logger)
 
 	// Phase 2: Fetch FDB status.
 	if databaseStatus == nil {
 		var err error
 		databaseStatus, err = r.getStatusFromClusterOrDummyStatus(logger, cluster)
 		if err != nil {
-			cluster.Status.Health.Available = false
-			cluster.Status.Health.Healthy = false
-			if originalStatus.Health.Available != cluster.Status.Health.Available ||
-				originalStatus.Health.Healthy != cluster.Status.Health.Healthy ||
-				!equality.Semantic.DeepEqual(originalStatus.ProcessGroups, cluster.Status.ProcessGroups) {
+			clusterStatus.Health.Available = false
+			clusterStatus.Health.Healthy = false
+			cluster.Status = clusterStatus
+			if !equality.Semantic.DeepEqual(cluster.Status, *originalStatus) {
 				logger.Info("database was marked as unavailable.")
 				_ = r.updateOrApply(ctx, cluster)
 			}
@@ -87,7 +93,7 @@ func (c updateStatus) reconcile(
 	}
 
 	// Phase 3: FDB-dependent status updates.
-	return updateStatusFromFDB(ctx, r, cluster, databaseStatus, originalStatus, logger)
+	return updateStatusFromFDB(ctx, r, cluster, &clusterStatus, databaseStatus, originalStatus, logger)
 }
 
 // updateStatusFromFDB updates cluster status fields that depend on the FDB
@@ -98,17 +104,11 @@ func updateStatusFromFDB(
 	ctx context.Context,
 	r *FoundationDBClusterReconciler,
 	cluster *fdbv1beta2.FoundationDBCluster,
+	clusterStatus *fdbv1beta2.FoundationDBClusterStatus,
 	databaseStatus *fdbv1beta2.FoundationDBStatus,
 	originalStatus *fdbv1beta2.FoundationDBClusterStatus,
 	logger logr.Logger,
 ) *requeue {
-	clusterStatus := fdbv1beta2.FoundationDBClusterStatus{}
-	clusterStatus.Generations.Reconciled = cluster.Status.Generations.Reconciled
-	clusterStatus.ProcessGroups = cluster.Status.ProcessGroups
-	clusterStatus.ConnectionString = cluster.Status.ConnectionString
-	clusterStatus.StorageServersPerDisk = []int{cluster.GetStorageServersPerPod()}
-	clusterStatus.LogServersPerDisk = []int{cluster.GetLogServersPerPod()}
-	clusterStatus.ImageTypes = []fdbv1beta2.ImageType{cluster.DesiredImageType()}
 	processMap := make(map[fdbv1beta2.ProcessGroupID][]fdbv1beta2.FoundationDBStatusProcessInfo)
 
 	versionMap := map[string]int{}
@@ -201,8 +201,8 @@ func updateStatusFromFDB(
 		}
 	}
 
-	updateFaultDomains(logger, processMap, &clusterStatus)
-	err = refreshProcessGroupStatus(ctx, r, cluster, &clusterStatus)
+	updateFaultDomains(logger, processMap, clusterStatus)
+	err = refreshProcessGroupStatus(ctx, r, cluster, clusterStatus)
 	if err != nil {
 		return &requeue{
 			curError: fmt.Errorf(
@@ -216,7 +216,7 @@ func updateStatusFromFDB(
 		ctx,
 		r,
 		cluster,
-		&clusterStatus,
+		clusterStatus,
 		processMap,
 		configMap,
 		logger,
@@ -336,7 +336,7 @@ func updateStatusFromFDB(
 		return clusterStatus.ProcessGroups[i].ProcessGroupID < clusterStatus.ProcessGroups[j].ProcessGroupID
 	})
 
-	cluster.Status = clusterStatus
+	cluster.Status = *clusterStatus
 	reconciled, err := cluster.CheckReconciliation(logger)
 	if err != nil {
 		return &requeue{curError: err}
@@ -589,9 +589,10 @@ func refreshPodState(
 	ctx context.Context,
 	r *FoundationDBClusterReconciler,
 	cluster *fdbv1beta2.FoundationDBCluster,
+	status *fdbv1beta2.FoundationDBClusterStatus,
 	logger logr.Logger,
 ) {
-	for _, processGroup := range cluster.Status.ProcessGroups {
+	for _, processGroup := range status.ProcessGroups {
 		pod, err := r.PodLifecycleManager.GetPod(
 			ctx,
 			r,

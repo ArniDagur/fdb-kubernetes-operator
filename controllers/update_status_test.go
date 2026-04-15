@@ -517,7 +517,7 @@ var _ = Describe("update_status", func() {
 						dummyPod,
 					),
 				).To(HaveOccurred())
-				refreshPodState(context.TODO(), clusterReconciler, cluster, logger)
+				refreshPodState(context.TODO(), clusterReconciler, cluster, &cluster.Status, logger)
 
 				missingProcesses := fdbv1beta2.FilterByCondition(
 					cluster.Status.ProcessGroups,
@@ -959,7 +959,7 @@ var _ = Describe("update_status", func() {
 			})
 
 			It("should get a condition assigned", func() {
-				refreshPodState(context.TODO(), clusterReconciler, cluster, logger)
+				refreshPodState(context.TODO(), clusterReconciler, cluster, &cluster.Status, logger)
 
 				failingPods := fdbv1beta2.FilterByCondition(
 					cluster.Status.ProcessGroups,
@@ -980,7 +980,7 @@ var _ = Describe("update_status", func() {
 			})
 
 			It("should get a condition assigned", func() {
-				refreshPodState(context.TODO(), clusterReconciler, cluster, logger)
+				refreshPodState(context.TODO(), clusterReconciler, cluster, &cluster.Status, logger)
 
 				failingPods := fdbv1beta2.FilterByCondition(
 					cluster.Status.ProcessGroups,
@@ -995,7 +995,7 @@ var _ = Describe("update_status", func() {
 
 			When("the process group is under maintenance", func() {
 				It("should still set pod-level conditions since refreshPodState does not depend on maintenance zone", func() {
-					refreshPodState(context.TODO(), clusterReconciler, cluster, logger)
+					refreshPodState(context.TODO(), clusterReconciler, cluster, &cluster.Status, logger)
 
 					failingPods := fdbv1beta2.FilterByCondition(
 						cluster.Status.ProcessGroups,
@@ -1172,7 +1172,7 @@ var _ = Describe("update_status", func() {
 			})
 
 			It("should mark the process group as Pod pending", func() {
-				refreshPodState(context.TODO(), clusterReconciler, cluster, logger)
+				refreshPodState(context.TODO(), clusterReconciler, cluster, &cluster.Status, logger)
 
 				pendingCount := 0
 				for _, processGroup := range cluster.Status.ProcessGroups {
