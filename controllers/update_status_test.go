@@ -517,17 +517,14 @@ var _ = Describe("update_status", func() {
 						dummyPod,
 					),
 				).To(HaveOccurred())
-				err := validateProcessGroups(
+				podStatusReconciler := updatePodStatus{}
+				Expect(podStatusReconciler.reconcile(
 					context.TODO(),
 					clusterReconciler,
 					cluster,
-					&cluster.Status,
-					processMap,
-					configMap,
+					nil,
 					logger,
-					"",
-				)
-				Expect(err).NotTo(HaveOccurred())
+				)).To(BeNil())
 
 				missingProcesses := fdbv1beta2.FilterByCondition(
 					cluster.Status.ProcessGroups,
@@ -969,17 +966,14 @@ var _ = Describe("update_status", func() {
 			})
 
 			It("should get a condition assigned", func() {
-				err := validateProcessGroups(
+				podStatusReconciler := updatePodStatus{}
+				Expect(podStatusReconciler.reconcile(
 					context.TODO(),
 					clusterReconciler,
 					cluster,
-					&cluster.Status,
-					processMap,
-					configMap,
+					nil,
 					logger,
-					"",
-				)
-				Expect(err).NotTo(HaveOccurred())
+				)).To(BeNil())
 
 				failingPods := fdbv1beta2.FilterByCondition(
 					cluster.Status.ProcessGroups,
@@ -1000,17 +994,14 @@ var _ = Describe("update_status", func() {
 			})
 
 			It("should get a condition assigned", func() {
-				err := validateProcessGroups(
+				podStatusReconciler := updatePodStatus{}
+				Expect(podStatusReconciler.reconcile(
 					context.TODO(),
 					clusterReconciler,
 					cluster,
-					&cluster.Status,
-					processMap,
-					configMap,
+					nil,
 					logger,
-					"",
-				)
-				Expect(err).NotTo(HaveOccurred())
+				)).To(BeNil())
 
 				failingPods := fdbv1beta2.FilterByCondition(
 					cluster.Status.ProcessGroups,
@@ -1024,27 +1015,24 @@ var _ = Describe("update_status", func() {
 			})
 
 			When("the process group is under maintenance", func() {
-				It("should not set the conditions", func() {
-					processGroup := cluster.Status.ProcessGroups[len(cluster.Status.ProcessGroups)-4]
-					Expect(
-						validateProcessGroups(
-							context.TODO(),
-							clusterReconciler,
-							cluster,
-							&cluster.Status,
-							processMap,
-							configMap,
-							logger,
-							processGroup.FaultDomain,
-						),
-					).NotTo(HaveOccurred())
+				It("should still set pod-level conditions since updatePodStatus does not depend on maintenance zone", func() {
+					podStatusReconciler := updatePodStatus{}
+					Expect(podStatusReconciler.reconcile(
+						context.TODO(),
+						clusterReconciler,
+						cluster,
+						nil,
+						logger,
+					)).To(BeNil())
 
 					failingPods := fdbv1beta2.FilterByCondition(
 						cluster.Status.ProcessGroups,
 						fdbv1beta2.PodFailing,
 						false,
 					)
-					Expect(failingPods).To(BeEmpty())
+					Expect(
+						failingPods,
+					).To(Equal([]fdbv1beta2.ProcessGroupID{pickedProcessGroup.ProcessGroupID}))
 					Expect(cluster.Status.ProcessGroups).To(HaveLen(17))
 				})
 			})
@@ -1212,17 +1200,14 @@ var _ = Describe("update_status", func() {
 			})
 
 			It("should mark the process group as Pod pending", func() {
-				err := validateProcessGroups(
+				podStatusReconciler := updatePodStatus{}
+				Expect(podStatusReconciler.reconcile(
 					context.TODO(),
 					clusterReconciler,
 					cluster,
-					&cluster.Status,
-					processMap,
-					configMap,
+					nil,
 					logger,
-					"",
-				)
-				Expect(err).NotTo(HaveOccurred())
+				)).To(BeNil())
 
 				pendingCount := 0
 				for _, processGroup := range cluster.Status.ProcessGroups {

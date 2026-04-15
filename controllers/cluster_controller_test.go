@@ -2972,6 +2972,156 @@ var _ = Describe("cluster_controller", func() {
 			})
 		})
 
+		Context("with an Evicted Pod", func() {
+			var recreatedPod corev1.Pod
+
+			BeforeEach(func() {
+				pods := &corev1.PodList{}
+				Expect(
+					k8sClient.List(context.TODO(), pods, getListOptions(cluster)...),
+				).NotTo(HaveOccurred())
+
+				recreatedPod = pods.Items[0]
+				Expect(
+					k8sClient.SetPodIntoFailed(context.Background(), &recreatedPod, "Evicted"),
+				).NotTo(HaveOccurred())
+				generationGap = 0
+			})
+
+			It("should recreate the Pod", func() {
+				pod := &corev1.Pod{}
+				Expect(
+					k8sClient.Get(
+						context.TODO(),
+						client.ObjectKey{
+							Namespace: recreatedPod.Namespace,
+							Name:      recreatedPod.Name,
+						},
+						pod,
+					),
+				).NotTo(HaveOccurred())
+				Expect(pod.UID).NotTo(Equal(recreatedPod.UID))
+			})
+		})
+
+		Context("with an Evicted Pod and an unavailable database", func() {
+			var evictedPod corev1.Pod
+
+			BeforeEach(func() {
+				pods := &corev1.PodList{}
+				Expect(
+					k8sClient.List(context.TODO(), pods, getListOptions(cluster)...),
+				).NotTo(HaveOccurred())
+
+				evictedPod = pods.Items[0]
+				Expect(
+					k8sClient.SetPodIntoFailed(context.Background(), &evictedPod, "Evicted"),
+				).NotTo(HaveOccurred())
+
+				// Simulate the database being unavailable so updateStatus
+				// cannot fetch FDB status. updatePodStatus should still
+				// delete the evicted pod and addPods should recreate it.
+				// We run the sub-reconcilers directly because MockError
+				// also blocks VersionSupported in the full reconcile loop.
+				Expect(internal.NormalizeClusterSpec(cluster, internal.DeprecationOptions{})).To(Succeed())
+
+				podStatusReconciler := updatePodStatus{}
+				Expect(podStatusReconciler.reconcile(
+					context.TODO(),
+					clusterReconciler,
+					cluster,
+					nil,
+					globalControllerLogger,
+				)).To(BeNil())
+
+				addPodsResult := addPods{}.reconcile(
+					context.TODO(),
+					clusterReconciler,
+					cluster,
+					nil,
+					globalControllerLogger,
+				)
+				Expect(addPodsResult).To(BeNil())
+
+				// Skip the JustBeforeEach reconciliation.
+				generationGap = 0
+			})
+
+			It("should delete the evicted Pod and recreate it", func() {
+				pod := &corev1.Pod{}
+				Expect(
+					k8sClient.Get(
+						context.TODO(),
+						client.ObjectKey{
+							Namespace: evictedPod.Namespace,
+							Name:      evictedPod.Name,
+						},
+						pod,
+					),
+				).NotTo(HaveOccurred())
+				// The pod should have been deleted and recreated with a new UID.
+				Expect(pod.UID).NotTo(Equal(evictedPod.UID))
+			})
+		})
+
+		Context("with a stale PodPending condition and an unavailable database", func() {
+			var adminClient *mock.AdminClient
+			var stalePG *fdbv1beta2.ProcessGroupStatus
+
+			BeforeEach(func() {
+				var err error
+				adminClient, err = mock.NewMockAdminClientUncast(cluster, k8sClient)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Set a stale PodPending condition on a process group whose
+				// pod is actually Running. Persist it so it survives reload.
+				stalePG = internal.PickProcessGroups(cluster, fdbv1beta2.ProcessClassStorage, 1)[0]
+				stalePG.UpdateCondition(fdbv1beta2.PodPending, true)
+				Expect(k8sClient.Status().Update(context.TODO(), cluster)).To(Succeed())
+
+				// Run updatePodStatus + updateStatus directly to simulate
+				// a reconcile loop with an unavailable database.
+				Expect(internal.NormalizeClusterSpec(cluster, internal.DeprecationOptions{})).To(Succeed())
+
+				podStatusReconciler := updatePodStatus{}
+				Expect(podStatusReconciler.reconcile(
+					context.TODO(),
+					clusterReconciler,
+					cluster,
+					nil,
+					globalControllerLogger,
+				)).To(BeNil())
+
+				adminClient.MockError(fmt.Errorf("fdb timeout: database is unavailable"))
+				requeue := updateStatus{}.reconcile(
+					context.TODO(),
+					clusterReconciler,
+					cluster,
+					nil,
+					globalControllerLogger,
+				)
+				Expect(requeue).NotTo(BeNil())
+				Expect(requeue.curError).To(HaveOccurred())
+
+				// Clear the mock error and skip the JustBeforeEach reconciliation.
+				adminClient.MockError(nil)
+				generationGap = 0
+			})
+
+			It("should clear the stale PodPending condition and persist it", func() {
+				// Reload from the Kubernetes API to verify persistence.
+				_, err := reloadCluster(cluster)
+				Expect(err).NotTo(HaveOccurred())
+				for _, pg := range cluster.Status.ProcessGroups {
+					if pg.ProcessGroupID == stalePG.ProcessGroupID {
+						Expect(pg.GetConditionTime(fdbv1beta2.PodPending)).To(BeNil())
+						return
+					}
+				}
+				Fail("process group not found in status")
+			})
+		})
+
 		Context("validating upgrade with ignoreLogGroups", func() {
 			var adminClient *mock.AdminClient
 

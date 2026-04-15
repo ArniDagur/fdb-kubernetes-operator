@@ -66,6 +66,7 @@ var addPodsReconciler = addPods{}
 
 // subReconcilers has the ordered list of all reconcilers that should be used by the cluster controller.
 var subReconcilers = []clusterSubReconciler{
+	updatePodStatus{},
 	updateStatus{},
 	updateLockConfiguration{},
 	updateConfigMap{},
@@ -91,6 +92,7 @@ var subReconcilers = []clusterSubReconciler{
 	updatePods{},
 	removeProcessGroups{},
 	removeServices{},
+	updatePodStatus{},
 	updateStatus{},
 }
 
