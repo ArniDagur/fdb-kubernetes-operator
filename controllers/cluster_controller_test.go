@@ -3019,20 +3019,19 @@ var _ = Describe("cluster_controller", func() {
 				).NotTo(HaveOccurred())
 
 				// Simulate the database being unavailable so updateStatus
-				// cannot fetch FDB status. updatePodStatus should still
-				// delete the evicted pod and addPods should recreate it.
+				// cannot fetch FDB status. refreshPodState (called at the
+				// top of updateStatus) should still delete the evicted pod,
+				// and addPods should recreate it.
 				// We run the sub-reconcilers directly because MockError
 				// also blocks VersionSupported in the full reconcile loop.
 				Expect(internal.NormalizeClusterSpec(cluster, internal.DeprecationOptions{})).To(Succeed())
 
-				podStatusReconciler := updatePodStatus{}
-				Expect(podStatusReconciler.reconcile(
+				refreshPodState(
 					context.TODO(),
 					clusterReconciler,
 					cluster,
-					nil,
 					globalControllerLogger,
-				)).To(BeNil())
+				)
 
 				addPodsResult := addPods{}.reconcile(
 					context.TODO(),
@@ -3079,18 +3078,16 @@ var _ = Describe("cluster_controller", func() {
 				stalePG.UpdateCondition(fdbv1beta2.PodPending, true)
 				Expect(k8sClient.Status().Update(context.TODO(), cluster)).To(Succeed())
 
-				// Run updatePodStatus + updateStatus directly to simulate
+				// Run refreshPodState + updateStatus directly to simulate
 				// a reconcile loop with an unavailable database.
 				Expect(internal.NormalizeClusterSpec(cluster, internal.DeprecationOptions{})).To(Succeed())
 
-				podStatusReconciler := updatePodStatus{}
-				Expect(podStatusReconciler.reconcile(
+				refreshPodState(
 					context.TODO(),
 					clusterReconciler,
 					cluster,
-					nil,
 					globalControllerLogger,
-				)).To(BeNil())
+				)
 
 				adminClient.MockError(fmt.Errorf("fdb timeout: database is unavailable"))
 				requeue := updateStatus{}.reconcile(

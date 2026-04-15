@@ -57,6 +57,14 @@ func (c updateStatus) reconcile(
 	logger logr.Logger,
 ) *requeue {
 	originalStatus := cluster.Status.DeepCopy()
+
+	// Refresh pod-level conditions before fetching FDB status. These checks
+	// only depend on Kubernetes state, so they run even when the database is
+	// unreachable. This prevents deadlocks where the database is down because
+	// too many pods are in a terminal state (e.g. evicted) and the operator
+	// can't clean them up because it can't fetch FDB status first.
+	refreshPodState(ctx, r, cluster, logger)
+
 	clusterStatus := fdbv1beta2.FoundationDBClusterStatus{}
 	clusterStatus.Generations.Reconciled = cluster.Status.Generations.Reconciled
 	clusterStatus.ProcessGroups = cluster.Status.ProcessGroups
@@ -558,6 +566,91 @@ func checkProcessMessagesForIOError(messages []fdbv1beta2.FoundationDBStatusProc
 	}
 
 	return false
+}
+
+// refreshPodState updates process group conditions that are derived purely from
+// Kubernetes pod state: MissingPod, PodFailing, PodPending, ResourcesTerminating.
+// It also deletes pods in terminal failed states (Evicted, NodeAffinity) so they
+// can be recreated by addPods.
+func refreshPodState(
+	ctx context.Context,
+	r *FoundationDBClusterReconciler,
+	cluster *fdbv1beta2.FoundationDBCluster,
+	logger logr.Logger,
+) {
+	for _, processGroup := range cluster.Status.ProcessGroups {
+		pod, err := r.PodLifecycleManager.GetPod(
+			ctx,
+			r,
+			cluster,
+			processGroup.GetPodName(cluster),
+		)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				if processGroup.IsMarkedForRemoval() && processGroup.IsExcluded() {
+					processGroup.UpdateCondition(fdbv1beta2.ResourcesTerminating, true)
+				} else {
+					processGroup.UpdateCondition(fdbv1beta2.MissingPod, true)
+				}
+
+				continue
+			}
+
+			logger.Info("Could not fetch Pod information",
+				"processGroupID", processGroup.ProcessGroupID)
+			continue
+		}
+
+		processGroup.UpdateCondition(fdbv1beta2.MissingPod, false)
+
+		if !pod.ObjectMeta.DeletionTimestamp.IsZero() {
+			if processGroup.IsMarkedForRemoval() && processGroup.IsExcluded() {
+				processGroup.UpdateCondition(fdbv1beta2.ResourcesTerminating, true)
+				continue
+			}
+
+			if pod.ObjectMeta.DeletionTimestamp.Add(cluster.GetFailedPodDuration()).
+				Before(time.Now()) {
+				processGroup.UpdateCondition(fdbv1beta2.PodFailing, true)
+				continue
+			}
+
+			continue
+		}
+
+		if pod.Status.Phase == corev1.PodPending {
+			processGroup.UpdateCondition(fdbv1beta2.PodPending, true)
+			continue
+		}
+
+		failing := false
+		for _, container := range pod.Status.ContainerStatuses {
+			if !container.Ready {
+				failing = true
+				break
+			}
+		}
+
+		if pod.Status.Phase == corev1.PodFailed {
+			failing = true
+
+			if (pod.Status.Reason == "NodeAffinity" || pod.Status.Reason == "Evicted") &&
+				pod.CreationTimestamp.Add(5*time.Minute).Before(time.Now()) {
+				logger.Info("Delete Pod that is in a terminal failed state",
+					"processGroupID", processGroup.ProcessGroupID,
+					"reason", pod.Status.Reason)
+
+				err = r.PodLifecycleManager.DeletePod(logr.NewContext(ctx, logger), r, pod)
+				if err != nil {
+					logger.Error(err, "Failed to delete terminal pod",
+						"processGroupID", processGroup.ProcessGroupID)
+				}
+			}
+		}
+
+		processGroup.UpdateCondition(fdbv1beta2.PodFailing, failing)
+		processGroup.UpdateCondition(fdbv1beta2.PodPending, false)
+	}
 }
 
 // Validate and set progressGroup's status
