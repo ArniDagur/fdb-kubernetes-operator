@@ -58,13 +58,6 @@ func (c updateStatus) reconcile(
 ) *requeue {
 	originalStatus := cluster.Status.DeepCopy()
 
-	// Phase 1: Kubernetes-only pod health checks.
-	// Runs before the FDB status fetch so it works even when the database is
-	// unreachable. This prevents deadlocks where the database is down because
-	// too many pods are in a terminal state (e.g. evicted) and the operator
-	// can't clean them up because it can't fetch FDB status first.
-
-	// Phase 2: Fetch FDB status.
 	if databaseStatus == nil {
 		var err error
 		databaseStatus, err = r.getStatusFromClusterOrDummyStatus(logger, cluster)
@@ -74,7 +67,7 @@ func (c updateStatus) reconcile(
 			cluster.Status.Health.Healthy = false
 
 			// Without the FDB status, a part of the reconciliation can still be done
-			reconcileFromK8s(ctx, r, cluster, logger)
+			reconcileWithoutStatus(ctx, r, cluster, nil, logger)
 
 			// Only update the status if it was changed.
 			if originalStatus.Health.Available != cluster.Status.Health.Available ||
@@ -92,15 +85,15 @@ func (c updateStatus) reconcile(
 		}
 	}
 
-	// Phase 3: FDB-dependent status updates.
-	return updateStatusFromFDB(ctx, r, cluster, databaseStatus, originalStatus, logger)
+	reconcileWithoutStatus(ctx, r, cluster, databaseStatus, logger)
+	return reconcileWithStatus(ctx, r, cluster, databaseStatus, originalStatus, logger)
 }
 
-// updateStatusFromFDB updates cluster status fields that depend on the FDB
+// reconcileWithStatus updates cluster status fields that depend on the FDB
 // machine-readable status: process liveness, exclusion state, command line
 // correctness, cluster health, coordinator validity, etc. It also persists the
 // final status to the Kubernetes API.
-func updateStatusFromFDB(
+func reconcileWithStatus(
 	ctx context.Context,
 	r *FoundationDBClusterReconciler,
 	cluster *fdbv1beta2.FoundationDBCluster,
@@ -588,10 +581,10 @@ func checkProcessMessagesForIOError(messages []fdbv1beta2.FoundationDBStatusProc
 	return false
 }
 
-// reconcileFromK8s updates process group conditions that are derived purely from
+// reconcileWithoutStatus updates process group conditions that are derived purely from
 // Kubernetes pod state. It also deletes pods in terminal failed states so they
 // can be recreated by addPods.
-func reconcileFromK8s(
+func reconcileWithoutStatus(
 	ctx context.Context,
 	r *FoundationDBClusterReconciler,
 	cluster *fdbv1beta2.FoundationDBCluster,
@@ -650,8 +643,7 @@ func reconcileFromK8s(
 			// if a Pod is marked for terminating (e.g. node failure) but the process itself is still reporting to the
 			// cluster. We only set this condition if the Pod is in this state for GetFailedPodDuration(), the default
 			// here is 5 minutes.
-			if pod.ObjectMeta.DeletionTimestamp.Add(cluster.GetFailedPodDuration()).
-				Before(time.Now()) {
+			if pod.ObjectMeta.DeletionTimestamp.Add(cluster.GetFailedPodDuration()).Before(time.Now()) {
 				processGroup.UpdateCondition(fdbv1beta2.PodFailing, true)
 				continue
 			}
@@ -678,8 +670,7 @@ func reconcileFromK8s(
 			// Fix for https://github.com/kubernetes/kubernetes/issues/92067
 			// This will delete the Pod that is stuck in the "NodeAffinity" or "Evicted"
 			// at a later stage the Pod will be recreated by the operator.
-			if (pod.Status.Reason == "NodeAffinity" || pod.Status.Reason == "Evicted") &&
-				pod.CreationTimestamp.Add(5*time.Minute).Before(time.Now()) {
+			if (pod.CreationTimestamp.Add(5*time.Minute).Before(time.Now()) && pod.Status.Reason == "NodeAffinity") || pod.Status.Reason == "Evicted" {
 				logger.Info("Delete Pod that is in a terminal failed state",
 					"processGroupID", processGroup.ProcessGroupID,
 					"reason", pod.Status.Reason)

@@ -3026,10 +3026,11 @@ var _ = Describe("cluster_controller", func() {
 				// also blocks VersionSupported in the full reconcile loop.
 				Expect(internal.NormalizeClusterSpec(cluster, internal.DeprecationOptions{})).To(Succeed())
 
-				reconcileFromK8s(
+				reconcileWithoutStatus(
 					context.TODO(),
 					clusterReconciler,
 					cluster,
+					nil,
 					globalControllerLogger,
 				)
 
@@ -3082,10 +3083,11 @@ var _ = Describe("cluster_controller", func() {
 				// a reconcile loop with an unavailable database.
 				Expect(internal.NormalizeClusterSpec(cluster, internal.DeprecationOptions{})).To(Succeed())
 
-				reconcileFromK8s(
+				reconcileWithoutStatus(
 					context.TODO(),
 					clusterReconciler,
 					cluster,
+					nil,
 					globalControllerLogger,
 				)
 
