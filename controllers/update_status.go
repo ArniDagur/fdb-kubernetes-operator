@@ -611,19 +611,17 @@ func refreshPodState(
 				} else {
 					processGroup.UpdateCondition(fdbv1beta2.MissingPod, true)
 				}
-
+				processGroup.UpdateCondition(fdbv1beta2.IncorrectCommandLine, false)
 				continue
 			}
-
-			logger.Info("Could not fetch Pod information",
-				"processGroupID", processGroup.ProcessGroupID)
+			logger.Info("Could not fetch Pod information", "processGroupID", processGroup.ProcessGroupID)
 			continue
 		}
 
 		processGroup.UpdateCondition(fdbv1beta2.MissingPod, false)
 
+		// This handles the case where the Pod has a DeletionTimestamp and should be deleted.
 		if !pod.ObjectMeta.DeletionTimestamp.IsZero() {
-			// This handles the case where the Pod has a DeletionTimestamp and should be deleted.
 			// If the ProcessGroup is marked for removal and is excluded, we can put the status into ResourcesTerminating.
 			if processGroup.IsMarkedForRemoval() && processGroup.IsExcluded() {
 				processGroup.UpdateCondition(fdbv1beta2.ResourcesTerminating, true)
@@ -638,7 +636,7 @@ func refreshPodState(
 				processGroup.UpdateCondition(fdbv1beta2.PodFailing, true)
 				continue
 			}
-
+			processGroup.UpdateCondition(fdbv1beta2.IncorrectCommandLine, false)
 			continue
 		}
 
@@ -680,7 +678,7 @@ func refreshPodState(
 	}
 }
 
-// Validate and set progressGroup's status
+// Validate and set processGroup's status
 func validateProcessGroups(
 	ctx context.Context,
 	r *FoundationDBClusterReconciler,
@@ -742,13 +740,7 @@ func validateProcessGroups(
 			processGroup.GetPodName(cluster),
 		)
 		if podError != nil {
-			if k8serrors.IsNotFound(podError) {
-				// Pod state (MissingPod, ResourcesTerminating, PodFailing) is already set by refreshPodState.
-				processGroup.UpdateCondition(fdbv1beta2.IncorrectCommandLine, false)
-				continue
-			}
-
-			logger.Info("could not fetch Pod information")
+			logger.Info("Could not fetch Pod information", "processGroupID", processGroup.ProcessGroupID)
 			continue
 		}
 		processGroup.AddAddresses(
@@ -756,18 +748,14 @@ func validateProcessGroups(
 			processGroup.IsMarkedForRemoval() || !status.Health.Available,
 		)
 
-		// Skip FDB-level checks for pods that are being deleted.
+		// Skip pods with DeletionTimestamps that should be deleted
 		if !pod.ObjectMeta.DeletionTimestamp.IsZero() {
 			if processGroup.IsMarkedForRemoval() && processGroup.IsExcluded() {
 				continue
 			}
-
-			if pod.ObjectMeta.DeletionTimestamp.Add(cluster.GetFailedPodDuration()).
-				Before(time.Now()) {
+			if pod.ObjectMeta.DeletionTimestamp.Add(cluster.GetFailedPodDuration()).Before(time.Now()) {
 				continue
 			}
-
-			processGroup.UpdateCondition(fdbv1beta2.IncorrectCommandLine, false)
 		}
 
 		// Even if the process group will be removed we need to keep the config around.
