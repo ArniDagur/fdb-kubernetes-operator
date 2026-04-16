@@ -70,12 +70,15 @@ func (c updateStatus) reconcile(
 		var err error
 		databaseStatus, err = r.getStatusFromClusterOrDummyStatus(logger, cluster)
 		if err != nil {
+			// When the status cannot be fetched, we have to assume that the cluster is unavailable and unhealthy.
 			cluster.Status.Health.Available = false
 			cluster.Status.Health.Healthy = false
+			// Only update the status if it was changed.
 			if originalStatus.Health.Available != cluster.Status.Health.Available ||
 				originalStatus.Health.Healthy != cluster.Status.Health.Healthy ||
 				!equality.Semantic.DeepEqual(originalStatus.ProcessGroups, cluster.Status.ProcessGroups) {
 				logger.Info("database was marked as unavailable.")
+				// We ignore the error here since the controller will requeue anyways.
 				_ = r.updateOrApply(ctx, cluster)
 			}
 
@@ -106,6 +109,7 @@ func updateStatusFromFDB(
 	clusterStatus.Generations.Reconciled = cluster.Status.Generations.Reconciled
 	clusterStatus.ProcessGroups = cluster.Status.ProcessGroups
 	clusterStatus.ConnectionString = cluster.Status.ConnectionString
+	// Initialize with the current desired storage servers per Pod
 	clusterStatus.StorageServersPerDisk = []int{cluster.GetStorageServersPerPod()}
 	clusterStatus.LogServersPerDisk = []int{cluster.GetLogServersPerPod()}
 	clusterStatus.ImageTypes = []fdbv1beta2.ImageType{cluster.DesiredImageType()}
@@ -600,6 +604,8 @@ func refreshPodState(
 		)
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
+				// Mark process groups as terminating if the pod has been deleted but other
+				// resources are stuck in terminating.
 				if processGroup.IsMarkedForRemoval() && processGroup.IsExcluded() {
 					processGroup.UpdateCondition(fdbv1beta2.ResourcesTerminating, true)
 				} else {
@@ -617,11 +623,16 @@ func refreshPodState(
 		processGroup.UpdateCondition(fdbv1beta2.MissingPod, false)
 
 		if !pod.ObjectMeta.DeletionTimestamp.IsZero() {
+			// This handles the case where the Pod has a DeletionTimestamp and should be deleted.
+			// If the ProcessGroup is marked for removal and is excluded, we can put the status into ResourcesTerminating.
 			if processGroup.IsMarkedForRemoval() && processGroup.IsExcluded() {
 				processGroup.UpdateCondition(fdbv1beta2.ResourcesTerminating, true)
 				continue
 			}
-
+			// Otherwise we set PodFailing to ensure that the operator will trigger a replacement. This case can happen
+			// if a Pod is marked for terminating (e.g. node failure) but the process itself is still reporting to the
+			// cluster. We only set this condition if the Pod is in this state for GetFailedPodDuration(), the default
+			// here is 5 minutes.
 			if pod.ObjectMeta.DeletionTimestamp.Add(cluster.GetFailedPodDuration()).
 				Before(time.Now()) {
 				processGroup.UpdateCondition(fdbv1beta2.PodFailing, true)
@@ -647,6 +658,9 @@ func refreshPodState(
 		if pod.Status.Phase == corev1.PodFailed {
 			failing = true
 
+			// Fix for https://github.com/kubernetes/kubernetes/issues/92067
+			// This will delete the Pod that is stuck in the "NodeAffinity" or "Evicted"
+			// at a later stage the Pod will be recreated by the operator.
 			if (pod.Status.Reason == "NodeAffinity" || pod.Status.Reason == "Evicted") &&
 				pod.CreationTimestamp.Add(5*time.Minute).Before(time.Now()) {
 				logger.Info("Delete Pod that is in a terminal failed state",
@@ -729,6 +743,7 @@ func validateProcessGroups(
 		)
 		if podError != nil {
 			if k8serrors.IsNotFound(podError) {
+				// Pod state (MissingPod, ResourcesTerminating, PodFailing) is already set by refreshPodState.
 				processGroup.UpdateCondition(fdbv1beta2.IncorrectCommandLine, false)
 				continue
 			}
