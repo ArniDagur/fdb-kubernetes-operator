@@ -30,12 +30,12 @@ import (
 	"k8s.io/utils/ptr"
 
 	"github.com/FoundationDB/fdb-kubernetes-operator/v2/pkg/fdbstatus"
+	"github.com/FoundationDB/fdb-kubernetes-operator/v2/pkg/podmanager"
 
 	fdbv1beta2 "github.com/FoundationDB/fdb-kubernetes-operator/v2/api/v1beta2"
 	"github.com/FoundationDB/fdb-kubernetes-operator/v2/internal"
 	"github.com/FoundationDB/fdb-kubernetes-operator/v2/internal/coordination"
 	"github.com/FoundationDB/fdb-kubernetes-operator/v2/internal/locality"
-	"github.com/FoundationDB/fdb-kubernetes-operator/v2/pkg/podmanager"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -63,7 +63,6 @@ func (c updateStatus) reconcile(
 	// unreachable. This prevents deadlocks where the database is down because
 	// too many pods are in a terminal state (e.g. evicted) and the operator
 	// can't clean them up because it can't fetch FDB status first.
-	refreshPodState(ctx, r, cluster, logger)
 
 	// Phase 2: Fetch FDB status.
 	if databaseStatus == nil {
@@ -73,6 +72,10 @@ func (c updateStatus) reconcile(
 			// When the status cannot be fetched, we have to assume that the cluster is unavailable and unhealthy.
 			cluster.Status.Health.Available = false
 			cluster.Status.Health.Healthy = false
+
+			// Without the FDB status, a part of the reconciliation can still be done
+			reconcileFromK8s(ctx, r, cluster, logger)
+
 			// Only update the status if it was changed.
 			if originalStatus.Health.Available != cluster.Status.Health.Available ||
 				originalStatus.Health.Healthy != cluster.Status.Health.Healthy ||
@@ -585,17 +588,30 @@ func checkProcessMessagesForIOError(messages []fdbv1beta2.FoundationDBStatusProc
 	return false
 }
 
-// refreshPodState updates process group conditions that are derived purely from
-// Kubernetes pod state: MissingPod, PodFailing, PodPending, ResourcesTerminating.
-// It also deletes pods in terminal failed states (Evicted, NodeAffinity) so they
+// reconcileFromK8s updates process group conditions that are derived purely from
+// Kubernetes pod state. It also deletes pods in terminal failed states so they
 // can be recreated by addPods.
-func refreshPodState(
+func reconcileFromK8s(
 	ctx context.Context,
 	r *FoundationDBClusterReconciler,
 	cluster *fdbv1beta2.FoundationDBCluster,
+	databaseStatus *fdbv1beta2.FoundationDBStatus,
 	logger logr.Logger,
 ) {
 	for _, processGroup := range cluster.Status.ProcessGroups {
+		if databaseStatus != nil && processGroup.IsUnderMaintenance(databaseStatus.Cluster.MaintenanceZone) {
+			// Skip process groups that are currently under maintenance, but only
+			// if the database is online. Purpose is to prevent misleading conditions
+			// that could lead to a replacement race condition.
+			logger.Info(
+				"skip updating the process group as the process group is currently under maintenance",
+				"faultDomain",
+				processGroup.FaultDomain,
+				"maintenanceZone",
+				databaseStatus.Cluster.MaintenanceZone,
+			)
+			continue
+		}
 		pod, err := r.PodLifecycleManager.GetPod(
 			ctx,
 			r,
@@ -617,8 +633,11 @@ func refreshPodState(
 			logger.Info("Could not fetch Pod information", "processGroupID", processGroup.ProcessGroupID)
 			continue
 		}
-
 		processGroup.UpdateCondition(fdbv1beta2.MissingPod, false)
+		processGroup.AddAddresses(
+			podmanager.GetPublicIPs(pod, logger),
+			processGroup.IsMarkedForRemoval() || !cluster.Status.Health.Available,
+		)
 
 		// This handles the case where the Pod has a DeletionTimestamp and should be deleted.
 		if !pod.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -743,10 +762,6 @@ func validateProcessGroups(
 			logger.Info("Could not fetch Pod information", "processGroupID", processGroup.ProcessGroupID)
 			continue
 		}
-		processGroup.AddAddresses(
-			podmanager.GetPublicIPs(pod, logger),
-			processGroup.IsMarkedForRemoval() || !status.Health.Available,
-		)
 
 		// Skip pods with DeletionTimestamps that should be deleted
 		if !pod.ObjectMeta.DeletionTimestamp.IsZero() {
