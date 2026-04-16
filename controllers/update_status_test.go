@@ -517,11 +517,10 @@ var _ = Describe("update_status", func() {
 						dummyPod,
 					),
 				).To(HaveOccurred())
-				status := fdbv1beta2.FoundationDBClusterStatus{ProcessGroups: cluster.Status.ProcessGroups}
-				refreshPodState(context.TODO(), clusterReconciler, cluster, &status, logger)
+				refreshPodState(context.TODO(), clusterReconciler, cluster, logger)
 
 				missingProcesses := fdbv1beta2.FilterByCondition(
-					status.ProcessGroups,
+					cluster.Status.ProcessGroups,
 					fdbv1beta2.MissingPod,
 					false,
 				)
@@ -960,18 +959,17 @@ var _ = Describe("update_status", func() {
 			})
 
 			It("should get a condition assigned", func() {
-				status := fdbv1beta2.FoundationDBClusterStatus{ProcessGroups: cluster.Status.ProcessGroups}
-				refreshPodState(context.TODO(), clusterReconciler, cluster, &status, logger)
+				refreshPodState(context.TODO(), clusterReconciler, cluster, logger)
 
 				failingPods := fdbv1beta2.FilterByCondition(
-					status.ProcessGroups,
+					cluster.Status.ProcessGroups,
 					fdbv1beta2.PodFailing,
 					false,
 				)
 				Expect(
 					failingPods,
 				).To(Equal([]fdbv1beta2.ProcessGroupID{pickedProcessGroup.ProcessGroupID}))
-				Expect(status.ProcessGroups).To(HaveLen(17))
+				Expect(cluster.Status.ProcessGroups).To(HaveLen(17))
 			})
 		})
 
@@ -982,34 +980,32 @@ var _ = Describe("update_status", func() {
 			})
 
 			It("should get a condition assigned", func() {
-				status := fdbv1beta2.FoundationDBClusterStatus{ProcessGroups: cluster.Status.ProcessGroups}
-				refreshPodState(context.TODO(), clusterReconciler, cluster, &status, logger)
+				refreshPodState(context.TODO(), clusterReconciler, cluster, logger)
 
 				failingPods := fdbv1beta2.FilterByCondition(
-					status.ProcessGroups,
+					cluster.Status.ProcessGroups,
 					fdbv1beta2.PodFailing,
 					false,
 				)
 				Expect(
 					failingPods,
 				).To(Equal([]fdbv1beta2.ProcessGroupID{pickedProcessGroup.ProcessGroupID}))
-				Expect(status.ProcessGroups).To(HaveLen(17))
+				Expect(cluster.Status.ProcessGroups).To(HaveLen(17))
 			})
 
 			When("the process group is under maintenance", func() {
 				It("should still set pod-level conditions since refreshPodState does not depend on maintenance zone", func() {
-					status := fdbv1beta2.FoundationDBClusterStatus{ProcessGroups: cluster.Status.ProcessGroups}
-					refreshPodState(context.TODO(), clusterReconciler, cluster, &status, logger)
+					refreshPodState(context.TODO(), clusterReconciler, cluster, logger)
 
 					failingPods := fdbv1beta2.FilterByCondition(
-						status.ProcessGroups,
+						cluster.Status.ProcessGroups,
 						fdbv1beta2.PodFailing,
 						false,
 					)
 					Expect(
 						failingPods,
 					).To(Equal([]fdbv1beta2.ProcessGroupID{pickedProcessGroup.ProcessGroupID}))
-					Expect(status.ProcessGroups).To(HaveLen(17))
+					Expect(cluster.Status.ProcessGroups).To(HaveLen(17))
 				})
 			})
 		})
@@ -1176,11 +1172,10 @@ var _ = Describe("update_status", func() {
 			})
 
 			It("should mark the process group as Pod pending", func() {
-				status := fdbv1beta2.FoundationDBClusterStatus{ProcessGroups: cluster.Status.ProcessGroups}
-				refreshPodState(context.TODO(), clusterReconciler, cluster, &status, logger)
+				refreshPodState(context.TODO(), clusterReconciler, cluster, logger)
 
 				pendingCount := 0
-				for _, processGroup := range status.ProcessGroups {
+				for _, processGroup := range cluster.Status.ProcessGroups {
 					if processGroup.ProcessGroupID == pendingProcessGroup {
 						Expect(processGroup.GetConditionTime(fdbv1beta2.PodPending)).NotTo(BeNil())
 						pendingCount++

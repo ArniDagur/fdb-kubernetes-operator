@@ -3030,7 +3030,6 @@ var _ = Describe("cluster_controller", func() {
 					context.TODO(),
 					clusterReconciler,
 					cluster,
-					&cluster.Status,
 					globalControllerLogger,
 				)
 
@@ -3079,14 +3078,16 @@ var _ = Describe("cluster_controller", func() {
 				stalePG.UpdateCondition(fdbv1beta2.PodPending, true)
 				Expect(k8sClient.Status().Update(context.TODO(), cluster)).To(Succeed())
 
-				generationGap = 0
-			})
-
-			It("should clear the stale PodPending condition and persist it", func() {
-				// Run updateStatus directly to simulate a reconcile loop
-				// with an unavailable database. refreshPodState runs
-				// internally as phase 1 and should clear the stale condition.
+				// Run refreshPodState + updateStatus directly to simulate
+				// a reconcile loop with an unavailable database.
 				Expect(internal.NormalizeClusterSpec(cluster, internal.DeprecationOptions{})).To(Succeed())
+
+				refreshPodState(
+					context.TODO(),
+					clusterReconciler,
+					cluster,
+					globalControllerLogger,
+				)
 
 				adminClient.MockError(fmt.Errorf("fdb timeout: database is unavailable"))
 				requeue := updateStatus{}.reconcile(
@@ -3098,8 +3099,13 @@ var _ = Describe("cluster_controller", func() {
 				)
 				Expect(requeue).NotTo(BeNil())
 				Expect(requeue.curError).To(HaveOccurred())
-				adminClient.MockError(nil)
 
+				// Clear the mock error and skip the JustBeforeEach reconciliation.
+				adminClient.MockError(nil)
+				generationGap = 0
+			})
+
+			It("should clear the stale PodPending condition and persist it", func() {
 				// Reload from the Kubernetes API to verify persistence.
 				_, err := reloadCluster(cluster)
 				Expect(err).NotTo(HaveOccurred())
