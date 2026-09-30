@@ -592,6 +592,45 @@ var _ = Describe("remove", func() {
 				},
 			},
 		),
+		Entry(
+			"when a log process group that shares the IP of its node with other process groups must be removed",
+			&fdbv1beta2.FoundationDBCluster{
+				Spec: fdbv1beta2.FoundationDBClusterSpec{
+					AutomationOptions: fdbv1beta2.FoundationDBClusterAutomationOptions{
+						UseLocalitiesForExclusion: ptr.To(true),
+					},
+				},
+				Status: fdbv1beta2.FoundationDBClusterStatus{
+					RunningVersion:    fdbv1beta2.Versions.SupportsLocalityBasedExclusions.String(),
+					RequiredAddresses: fdbv1beta2.RequiredAddressSet{TLS: true},
+					ProcessGroups: []*fdbv1beta2.ProcessGroupStatus{
+						{
+							ProcessGroupID: "storage-1",
+							ProcessClass:   fdbv1beta2.ProcessClassStorage,
+							Addresses:      []string{"192.0.0.10"},
+							PortBlock:      &fdbv1beta2.PortBlock{Start: 20000, ServersPerPod: 2},
+						},
+						{
+							ProcessGroupID:   "log-1",
+							ProcessClass:     fdbv1beta2.ProcessClassLog,
+							Addresses:        []string{"192.0.0.10"},
+							PortBlock:        &fdbv1beta2.PortBlock{Start: 20005, ServersPerPod: 1},
+							RemovalTimestamp: &metav1.Time{Time: time.Now()},
+						},
+					},
+				},
+			},
+			// The node IP alone would match storage-1 as well, so log-1 is identified by the IP:port of its process.
+			[]fdbv1beta2.ProcessAddress{
+				{
+					StringAddress: fdbv1beta2.FDBLocalityExclusionPrefix + ":" + "log-1",
+				},
+				{
+					IPAddress: net.ParseIP("192.0.0.10"),
+					Port:      20005,
+				},
+			},
+		),
 		Entry("when one process group with multiple addresses must be removed",
 			&fdbv1beta2.FoundationDBCluster{
 				Status: fdbv1beta2.FoundationDBClusterStatus{

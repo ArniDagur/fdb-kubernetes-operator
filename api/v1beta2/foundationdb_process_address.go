@@ -298,14 +298,23 @@ func (address ProcessAddress) StringWithoutFlags() string {
 	return net.JoinHostPort(address.MachineAddress(), strconv.Itoa(address.Port))
 }
 
+// DefaultProcessPortStart is the TLS port of the first process in a pod that does not use a port block.
+const DefaultProcessPortStart = 4500
+
 // GetProcessPort returns the expected port for a given process number
 // and the tls setting.
 func GetProcessPort(processNumber int, tls bool) int {
+	return GetProcessPortFromStart(DefaultProcessPortStart, processNumber, tls)
+}
+
+// GetProcessPortFromStart returns the expected port for a given process number and the tls setting, when the
+// first process uses start as its TLS port.
+func GetProcessPortFromStart(start int, processNumber int, tls bool) int {
 	if tls {
-		return 4498 + 2*processNumber
+		return start + 2*(processNumber-1)
 	}
 
-	return 4499 + 2*processNumber
+	return start + 2*(processNumber-1) + 1
 }
 
 // GetFullAddressList gets the full list of public addresses we should use for a
@@ -323,6 +332,25 @@ func GetFullAddressList(
 	requireTLS bool,
 	requireNonTLS bool,
 ) []ProcessAddress {
+	return GetFullAddressListFromStart(
+		address,
+		primaryOnly,
+		DefaultProcessPortStart,
+		processNumber,
+		requireTLS,
+		requireNonTLS,
+	)
+}
+
+// GetFullAddressListFromStart works like GetFullAddressList, but the first process uses start as its TLS port.
+func GetFullAddressListFromStart(
+	address string,
+	primaryOnly bool,
+	start int,
+	processNumber int,
+	requireTLS bool,
+	requireNonTLS bool,
+) []ProcessAddress {
 	addrs := make([]ProcessAddress, 0, 2)
 
 	// If the address is already enclosed in brackets, remove them since they
@@ -335,7 +363,7 @@ func GetFullAddressList(
 		pAddr := NewProcessAddress(
 			nil,
 			address,
-			GetProcessPort(processNumber, true),
+			GetProcessPortFromStart(start, processNumber, true),
 			map[string]bool{"tls": true},
 		)
 		addrs = append(addrs, pAddr)
@@ -346,7 +374,12 @@ func GetFullAddressList(
 	}
 
 	if requireNonTLS {
-		pAddr := NewProcessAddress(nil, address, GetProcessPort(processNumber, false), nil)
+		pAddr := NewProcessAddress(
+			nil,
+			address,
+			GetProcessPortFromStart(start, processNumber, false),
+			nil,
+		)
 		if !requireTLS && primaryOnly {
 			return []ProcessAddress{pAddr}
 		}

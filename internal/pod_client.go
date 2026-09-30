@@ -530,9 +530,10 @@ func GetSubstitutionsFromClusterAndPod(
 	}
 
 	copyableSubstitutions := map[string]fdbv1beta2.None{
-		fdbv1beta2.EnvNameDNSName:    {},
-		fdbv1beta2.EnvNameInstanceID: {},
-		"CUSTOM_ENV":                 {},
+		fdbv1beta2.EnvNameDNSName:        {},
+		fdbv1beta2.EnvNameInstanceID:     {},
+		fdbv1beta2.EnvNamePortBlockStart: {},
+		"CUSTOM_ENV":                     {},
 	}
 	for _, container := range pod.Spec.Containers {
 		for _, envVar := range container.Env {

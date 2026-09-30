@@ -53,6 +53,7 @@ Other than the above, you can make any modifications to the pod definition you n
 The operator doesn't support to use custom ports for FDB.
 Per default a FDB cluster without TLS will use the ports `4501` and a FDB cluster using TLS will be using `4500`.
 If more than one process should be running per Pod, e.g. when using the `storageServersPerPod` setting, the additional processes will get the `standard port + 2*processNumber`, e.g. for the second process in a TLS cluster that would be `4502`.
+With [host networking](host_networking.md) every pod gets its own block of ports from a configurable range instead.
 
 ## FDB version upgrades
 

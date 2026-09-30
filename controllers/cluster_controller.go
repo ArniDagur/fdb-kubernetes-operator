@@ -593,12 +593,13 @@ func (r *FoundationDBClusterReconciler) updatePodDynamicConf(
 	var expectedConf string
 	imageType := internal.GetImageType(pod)
 	if imageType == fdbv1beta2.ImageTypeUnified {
-		config, err := internal.GetMonitorProcessConfiguration(
+		config, err := internal.GetMonitorProcessConfigurationWithNetwork(
 			cluster,
 			processClass,
 			serversPerPod,
 			imageType,
 			currentPodIPFamily,
+			internal.HasPortBlock(pod),
 		)
 		if err != nil {
 			return false, err

@@ -99,6 +99,23 @@ func (version Version) SupportsBackupEncryption() bool {
 	return version.IsAtLeast(Versions.SupportsBackupEncryption)
 }
 
+// hostNetworkingMinimumVersions contains, per release branch, the first version whose fdb-kubernetes-monitor supports
+// the Sum argument that host networking needs to compute the ports of each pod. No FDB release contains it yet, so
+// the list is empty until one does.
+var hostNetworkingMinimumVersions []Version
+
+// SupportsHostNetworking returns true if the fdb-kubernetes-monitor shipped with this version supports the Sum
+// argument, which host networking needs.
+func (version Version) SupportsHostNetworking() bool {
+	for _, minimum := range hostNetworkingMinimumVersions {
+		if version.IsProtocolCompatible(minimum) {
+			return version.IsAtLeast(minimum)
+		}
+	}
+
+	return false
+}
+
 // AutomaticallyRemovesDeadTesterProcesses returns true if the FDB version automatically removes old tester processes
 // from the list of processes.
 func (version Version) AutomaticallyRemovesDeadTesterProcesses() bool {

@@ -37,6 +37,8 @@ type RoutingConfigApplyConfiguration struct {
 	// service.
 	// The default is `cluster.local`.
 	DNSDomain *string `json:"dnsDomain,omitempty"`
+	// HostNetwork configures the FoundationDB pods to run in the host network namespace.
+	HostNetwork *HostNetworkConfigApplyConfiguration `json:"hostNetwork,omitempty"`
 }
 
 // RoutingConfigApplyConfiguration constructs a declarative configuration of the RoutingConfig type for use with
@@ -90,5 +92,13 @@ func (b *RoutingConfigApplyConfiguration) WithDefineDNSLocalityFields(value bool
 // If called multiple times, the DNSDomain field is set to the value of the last call.
 func (b *RoutingConfigApplyConfiguration) WithDNSDomain(value string) *RoutingConfigApplyConfiguration {
 	b.DNSDomain = &value
+	return b
+}
+
+// WithHostNetwork sets the HostNetwork field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the HostNetwork field is set to the value of the last call.
+func (b *RoutingConfigApplyConfiguration) WithHostNetwork(value *HostNetworkConfigApplyConfiguration) *RoutingConfigApplyConfiguration {
+	b.HostNetwork = value
 	return b
 }

@@ -83,6 +83,10 @@ type AllowedPodModifications struct {
 	// AllowedAdditionalVolumeMounts defines the allowed volume mounts a user can define in the user provided
 	// corev1.PodSpec.
 	AllowedAdditionalVolumeMounts map[string]None
+	// SkipHostNetworkVersionCheck disables the check that the FDB version ships an fdb-kubernetes-monitor with the Sum
+	// argument, which spec.routing.hostNetwork needs. Only use it with custom images whose monitor contains the
+	// Sum argument.
+	SkipHostNetworkVersionCheck *bool
 }
 
 // PodSpecIsSanitized validates if the user provided modification are allowed by the operator settings.

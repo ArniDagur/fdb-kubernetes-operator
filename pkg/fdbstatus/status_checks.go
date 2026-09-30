@@ -120,9 +120,11 @@ func getRemainingAndExcludedFromStatus(
 		}
 	}
 
+	// Addresses are compared without flags. For addresses without a port this is the machine address, for addresses
+	// with a port, e.g. of process groups that share the IP of their node, it is the IP:port of a single process.
 	addressesToVerify := map[string]fdbv1beta2.None{}
 	for _, addr := range addresses {
-		addressesToVerify[addr.MachineAddress()] = fdbv1beta2.None{}
+		addressesToVerify[addr.StringWithoutFlags()] = fdbv1beta2.None{}
 	}
 
 	// Check in the status output which processes are already marked for exclusion in the cluster
@@ -134,6 +136,7 @@ func getRemainingAndExcludedFromStatus(
 				process.Locality[fdbv1beta2.FDBLocalityInstanceIDKey],
 			),
 			process.Address.IPAddress.String(),
+			process.Address.StringWithoutFlags(),
 		}
 
 		// We have to verify the IP address and the locality of this process, if neither should be verified we skip any
@@ -164,7 +167,7 @@ func getRemainingAndExcludedFromStatus(
 	}
 
 	for _, addr := range addresses {
-		address := addr.MachineAddress()
+		address := addr.StringWithoutFlags()
 		// If we didn't visit that address (absent in the cluster status) we assume it's safe to run the exclude command against it.
 		// We have to run the exclude command against those addresses, to make sure they are not serving any roles.
 		visitedCount, visited := visitedAddresses[address]
@@ -181,7 +184,7 @@ func getRemainingAndExcludedFromStatus(
 
 		// Those are the processes that are marked as excluded and are not serving any roles. It's safe to delete Pods
 		// that host those processes.
-		excludedCount, ok := fullyExcludedAddresses[addr.MachineAddress()]
+		excludedCount, ok := fullyExcludedAddresses[address]
 		if ok {
 			// We have to make sure that we have visited as many processes as we have seen fully excluded. Otherwise we might
 			// return a wrong signal if more than one process is used per Pod. In this case we have to wait for all processes

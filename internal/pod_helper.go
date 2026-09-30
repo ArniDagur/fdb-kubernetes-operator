@@ -247,6 +247,70 @@ func GetSidecarImage(
 	return GetImage(image, imageConfigs, cluster.Spec.Version, false)
 }
 
+// HasPortBlock returns true if the Pod was created with a port block, which means it uses the host network.
+func HasPortBlock(pod *corev1.Pod) bool {
+	if pod == nil {
+		return false
+	}
+
+	for _, container := range pod.Spec.Containers {
+		if container.Name != fdbv1beta2.MainContainerName {
+			continue
+		}
+
+		for _, env := range container.Env {
+			if env.Name == fdbv1beta2.EnvNamePortBlockStart {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// GetPortBlock returns the port block a host-networked Pod was created with. The block is read from the
+// environment of the main container, which cannot change after the Pod is created. It returns nil if the Pod has no
+// port block.
+func GetPortBlock(
+	pod *corev1.Pod,
+	processClass fdbv1beta2.ProcessClass,
+) (*fdbv1beta2.PortBlock, error) {
+	if pod == nil {
+		return nil, nil
+	}
+
+	for _, container := range pod.Spec.Containers {
+		if container.Name != fdbv1beta2.MainContainerName {
+			continue
+		}
+
+		for _, env := range container.Env {
+			if env.Name != fdbv1beta2.EnvNamePortBlockStart {
+				continue
+			}
+
+			start, err := strconv.Atoi(env.Value)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"invalid %s value %q: %w",
+					fdbv1beta2.EnvNamePortBlockStart,
+					env.Value,
+					err,
+				)
+			}
+
+			serversPerPod, err := GetServersPerPodForPod(pod, processClass)
+			if err != nil {
+				return nil, err
+			}
+
+			return &fdbv1beta2.PortBlock{Start: start, ServersPerPod: serversPerPod}, nil
+		}
+	}
+
+	return nil, nil
+}
+
 // GetPublicIPSource determines how a Pod has gotten its public IP.
 func GetPublicIPSource(pod *corev1.Pod) (fdbv1beta2.PublicIPSource, error) {
 	if pod == nil {

@@ -19,12 +19,14 @@ This Document documents the types introduced by the FoundationDB Operator to be 
 * [FoundationDBClusterList](#foundationdbclusterlist)
 * [FoundationDBClusterSpec](#foundationdbclusterspec)
 * [FoundationDBClusterStatus](#foundationdbclusterstatus)
+* [HostNetworkConfig](#hostnetworkconfig)
 * [LabelConfig](#labelconfig)
 * [LockDenyListEntry](#lockdenylistentry)
 * [LockOptions](#lockoptions)
 * [LockSystemStatus](#locksystemstatus)
 * [MaintenanceModeInfo](#maintenancemodeinfo)
 * [MaintenanceModeOptions](#maintenancemodeoptions)
+* [PortBlock](#portblock)
 * [ProcessGroupCondition](#processgroupcondition)
 * [ProcessGroupStatus](#processgroupstatus)
 * [ProcessSettings](#processsettings)
@@ -303,6 +305,18 @@ FoundationDBClusterStatus defines the observed state of FoundationDBCluster
 
 [Back to TOC](#table-of-contents)
 
+## HostNetworkConfig
+
+HostNetworkConfig defines how the FoundationDB pods use the host network.
+
+| Field | Description | Scheme | Required |
+| ----- | ----------- | ------ | -------- |
+| enabled | Enabled defines whether the FoundationDB pods use the host network. When enabled, the operator assigns every pod a unique block of ports from the port range, so that multiple pods of this cluster can run on the same node. Defaults to false. | *bool | false |
+| portRangeStart | PortRangeStart defines the first port of the range the operator assigns port blocks from. Required when Enabled is true. | *int | false |
+| portRangeEnd | PortRangeEnd defines the last port (inclusive) of the range the operator assigns port blocks from. Required when Enabled is true. | *int | false |
+
+[Back to TOC](#table-of-contents)
+
 ## ImageType
 
 ImageType defines a single kind of images used in the cluster.
@@ -405,6 +419,17 @@ PodUpdateStrategy defines how Pod spec changes should be applied.
 
 [Back to TOC](#table-of-contents)
 
+## PortBlock
+
+PortBlock defines a block of consecutive ports used by one host-networked pod.
+
+| Field | Description | Scheme | Required |
+| ----- | ----------- | ------ | -------- |
+| start | Start is the first port of the block. | int | true |
+| serversPerPod | ServersPerPod is the number of fdbserver processes the block holds. The block has 2 * ServersPerPod + 1 ports: a TLS and a non-TLS port per process, and the metrics port. | int | true |
+
+[Back to TOC](#table-of-contents)
+
 ## ProcessGroupCondition
 
 ProcessGroupCondition represents a degraded condition that a process group is in.
@@ -443,6 +468,7 @@ ProcessGroupStatus represents the status of a ProcessGroup.
 | processGroupConditions | ProcessGroupConditions represents a list of degraded conditions that the process group is in. | []*[ProcessGroupCondition](#processgroupcondition) | false |
 | faultDomain | FaultDomain represents the last seen fault domain from the cluster status. This can be used if a Pod or process is not running and would be missing in the cluster status. | [FaultDomain](#faultdomain) | false |
 | machine | Machine represents the last seen machine from the cluster status. This can be used if a Pod or process is not running and would be missing in the cluster status. The information is gathered from the locality information. | [Machine](#machine) | false |
+| portBlock | PortBlock is the block of ports used by this process group's host-networked pod. Unset if the process group's pod uses the pod network. | *[PortBlock](#portblock) | false |
 
 [Back to TOC](#table-of-contents)
 
@@ -487,6 +513,7 @@ RoutingConfig allows configuring routing to our pods, and services that sit in f
 | useDNSInClusterFile | UseDNSInClusterFile determines whether to use DNS names rather than IP addresses to identify coordinators in the cluster file. This requires FoundationDB 7.0+. | *bool | false |
 | defineDNSLocalityFields | DefineDNSLocalityFields determines whether to define pod DNS names on pod specs and provide them in the locality arguments to fdbserver.  This is ignored if UseDNSInCluster is true. | *bool | false |
 | dnsDomain | DNSDomain defines the cluster domain used in a DNS name generated for a service. The default is `cluster.local`. | *string | false |
+| hostNetwork | HostNetwork configures the FoundationDB pods to run in the host network namespace. | *[HostNetworkConfig](#hostnetworkconfig) | false |
 
 [Back to TOC](#table-of-contents)
 

@@ -120,3 +120,5 @@ require (
 	sigs.k8s.io/kustomize/kyaml v0.20.1 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 )
+
+replace github.com/apple/foundationdb/fdbkubernetesmonitor => github.com/ArniDagur/foundationdb/fdbkubernetesmonitor v0.0.0-20260930043036-0093911e0616

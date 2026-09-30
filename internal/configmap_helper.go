@@ -75,11 +75,29 @@ func GetConfigMap(cluster *fdbv1beta2.FoundationDBCluster) (*corev1.ConfigMap, e
 				fdbv1beta2.ImageTypeUnified,
 				processClass,
 				0,
+				false,
 			)
 			if err != nil {
 				return nil, err
 			}
 			data[filename] = string(jsonData)
+
+			// Pods that use the host network need a configuration that computes their ports from their port block.
+			// Pods of both kinds can exist while host networking is turned on or off, so both entries are kept
+			// until no process group has a port block anymore.
+			if cluster.UseHostNetwork() || cluster.HasPortBlocks() {
+				filename, jsonData, err = getDataForMonitorConf(
+					cluster,
+					fdbv1beta2.ImageTypeUnified,
+					processClass,
+					0,
+					true,
+				)
+				if err != nil {
+					return nil, err
+				}
+				data[filename] = string(jsonData)
+			}
 		}
 
 		if _, useSplitImage := imageTypes[fdbv1beta2.ImageTypeSplit]; useSplitImage {
@@ -112,6 +130,7 @@ func GetConfigMap(cluster *fdbv1beta2.FoundationDBCluster) (*corev1.ConfigMap, e
 						processClass,
 						fdbv1beta2.ImageTypeSplit,
 						serversPerPod,
+						false,
 					),
 					connectionString,
 					processClass,
@@ -159,8 +178,16 @@ func getDataForMonitorConf(
 	imageType fdbv1beta2.ImageType,
 	pClass fdbv1beta2.ProcessClass,
 	serversPerPod int,
+	hostNetwork bool,
 ) (string, []byte, error) {
-	config, err := GetMonitorProcessConfiguration(cluster, pClass, serversPerPod, imageType, nil)
+	config, err := GetMonitorProcessConfigurationWithNetwork(
+		cluster,
+		pClass,
+		serversPerPod,
+		imageType,
+		nil,
+		hostNetwork,
+	)
 	if err != nil {
 		return "", nil, err
 	}
@@ -168,7 +195,7 @@ func getDataForMonitorConf(
 	if err != nil {
 		return "", nil, err
 	}
-	filename := GetConfigMapMonitorConfEntry(pClass, imageType, serversPerPod)
+	filename := GetConfigMapMonitorConfEntry(pClass, imageType, serversPerPod, hostNetwork)
 	return filename, jsonData, nil
 }
 
@@ -193,13 +220,19 @@ func setMonitorConfForFilename(
 	return nil
 }
 
-// GetConfigMapMonitorConfEntry returns the specific key for the monitor conf in the ConfigMap
+// GetConfigMapMonitorConfEntry returns the specific key for the monitor conf in the ConfigMap. Pods that use the host
+// network have their own entry for the unified image.
 func GetConfigMapMonitorConfEntry(
 	pClass fdbv1beta2.ProcessClass,
 	imageType fdbv1beta2.ImageType,
 	serversPerPod int,
+	hostNetwork bool,
 ) string {
 	if imageType == fdbv1beta2.ImageTypeUnified {
+		if hostNetwork {
+			return fmt.Sprintf("fdbmonitor-conf-%s-host-network-json", pClass)
+		}
+
 		return fmt.Sprintf("fdbmonitor-conf-%s-json", pClass)
 	}
 	if serversPerPod > 1 {
@@ -217,10 +250,11 @@ func GetDynamicConfHash(
 	pClass fdbv1beta2.ProcessClass,
 	imageType fdbv1beta2.ImageType,
 	serversPerPod int,
+	hostNetwork bool,
 ) (string, error) {
 	fields := []string{
 		fdbv1beta2.ClusterFileKey,
-		GetConfigMapMonitorConfEntry(pClass, imageType, serversPerPod),
+		GetConfigMapMonitorConfEntry(pClass, imageType, serversPerPod, hostNetwork),
 		fdbv1beta2.RunningVersionKey,
 		fdbv1beta2.CaFileKey,
 		fdbv1beta2.SidecarConfKey,

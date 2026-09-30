@@ -453,17 +453,10 @@ func (client *cliAdminClient) ExcludeProcesses(addresses []fdbv1beta2.ProcessAdd
 	return client.ExcludeProcessesWithNoWait(addresses, client.Cluster.GetUseNonBlockingExcludes())
 }
 
-// getAddressStringsWithoutPorts will return a string with addresses or localities that can be used for exclusion
-// or inclusion. If any of the addresses defines a port, it will be reset by this method to ensure the whole pod gets
-// excluded or included.
-func getAddressStringsWithoutPorts(addresses []fdbv1beta2.ProcessAddress) string {
-	// Ensure that the ports are set to 0, as the operator will always exclude whole pods.
-	for idx, address := range addresses {
-		if address.Port != 0 {
-			addresses[idx].Port = 0
-		}
-	}
-
+// getAddressStrings will return a string with addresses or localities that can be used for exclusion or inclusion.
+// Addresses are used as given: callers pass bare IPs to exclude whole pods, and IP:port addresses for process groups
+// that share the IP of their node.
+func getAddressStrings(addresses []fdbv1beta2.ProcessAddress) string {
 	return fdbv1beta2.ProcessAddressesStringWithoutFlags(addresses, " ")
 }
 
@@ -573,7 +566,7 @@ func (client *cliAdminClient) ExcludeProcessesWithNoWait(
 		excludeCommand.WriteString("no_wait ")
 	}
 
-	excludeCommand.WriteString(getAddressStringsWithoutPorts(addresses))
+	excludeCommand.WriteString(getAddressStrings(addresses))
 
 	_, err := client.runCommand(
 		cliCommand{command: excludeCommand.String(), timeout: getMaxTimeout(client.timeout)},
@@ -587,8 +580,7 @@ func getAddressesAndLocalities(processAddresses []fdbv1beta2.ProcessAddress) ([]
 	addresses := make([]string, 0, len(processAddresses))
 
 	for _, address := range processAddresses {
-		address.Port = 0
-		addr := address.String()
+		addr := address.StringWithoutFlags()
 		if strings.HasPrefix(addr, fdbv1beta2.FDBLocalityExclusionPrefix) {
 			localities = append(localities, addr)
 			continue
@@ -625,7 +617,7 @@ func (client *cliAdminClient) IncludeProcesses(addresses []fdbv1beta2.ProcessAdd
 
 	_, err := client.runCommand(cliCommand{command: fmt.Sprintf(
 		"include %s",
-		getAddressStringsWithoutPorts(addresses),
+		getAddressStrings(addresses),
 	)})
 
 	return err

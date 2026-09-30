@@ -74,6 +74,9 @@ type Options struct {
 	AllowAutomountServiceAccountToken bool
 	// AllowHostNetwork defines if a user is allowed to set the HostNetwork setting in the user provided corev1.PodSpec.
 	AllowHostNetwork bool
+	// SkipHostNetworkVersionCheck disables the check that the FDB version ships an fdb-kubernetes-monitor with the Sum
+	// argument, which spec.routing.hostNetwork needs.
+	SkipHostNetworkVersionCheck bool
 	// AllowHostPID defines if a user is allowed to set the HostPID setting in the user provided corev1.PodSpec.
 	AllowHostPID bool
 	// AllowHostIPC defines if a user is allowed to set the HostIPC setting in the user provided corev1.PodSpec.
@@ -405,6 +408,12 @@ func (o *Options) BindFlags(fs *pflag.FlagSet) {
 		true,
 		"If set to false the user provided configuration can't set spec.HostNetwork to true.",
 	)
+	fs.BoolVar(
+		&o.SkipHostNetworkVersionCheck,
+		"skip-host-network-version-check",
+		false,
+		"If set to true, spec.routing.hostNetwork is allowed with FDB versions that are not known to ship an fdb-kubernetes-monitor with the Sum argument. Only use this with custom images whose monitor contains the Sum argument.",
+	)
 	fs.StringArrayVar(
 		&o.AllowedAdditionalVolumeSources,
 		"allowed-additional-volume-sources",
@@ -655,6 +664,7 @@ func (o *Options) generateAllowedPodModifications() *fdbv1beta2.AllowedPodModifi
 	allowedPodModifications := &fdbv1beta2.AllowedPodModifications{
 		AllowAutomountServiceAccountToken: ptr.To(o.AllowAutomountServiceAccountToken),
 		AllowHostNetwork:                  ptr.To(o.AllowHostNetwork),
+		SkipHostNetworkVersionCheck:       ptr.To(o.SkipHostNetworkVersionCheck),
 		AllowHostPID:                      ptr.To(o.AllowHostPID),
 		AllowHostIPC:                      ptr.To(o.AllowHostIPC),
 		AllowedServiceAccountNames:        map[string]fdbv1beta2.None{},

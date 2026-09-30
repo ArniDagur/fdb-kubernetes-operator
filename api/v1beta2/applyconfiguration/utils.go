@@ -68,6 +68,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1beta2.FoundationDBRestoreSpecApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("FoundationDBRestoreStatus"):
 		return &apiv1beta2.FoundationDBRestoreStatusApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("HostNetworkConfig"):
+		return &apiv1beta2.HostNetworkConfigApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("ImageConfig"):
 		return &apiv1beta2.ImageConfigApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("LabelConfig"):
@@ -82,6 +84,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1beta2.MaintenanceModeInfoApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("MaintenanceModeOptions"):
 		return &apiv1beta2.MaintenanceModeOptionsApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("PortBlock"):
+		return &apiv1beta2.PortBlockApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("ProcessCounts"):
 		return &apiv1beta2.ProcessCountsApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("ProcessGroupCondition"):
