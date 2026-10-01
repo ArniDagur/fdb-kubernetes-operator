@@ -38,20 +38,9 @@ import (
 var ErrCoordinatorSelection = errors.New("could not select new coordinators")
 
 // ChangeCoordinators will change the coordinators and set the new connection string on the FoundationDBCluster resource.
+// The excluded process groups are never selected as coordinators. It returns the process groups of the new
+// coordinators. If no valid set of coordinators can be selected, the returned error wraps ErrCoordinatorSelection.
 func ChangeCoordinators(
-	logger logr.Logger,
-	adminClient fdbadminclient.AdminClient,
-	cluster *fdbv1beta2.FoundationDBCluster,
-	status *fdbv1beta2.FoundationDBStatus,
-) error {
-	_, err := ChangeCoordinatorsExcluding(logger, adminClient, cluster, status, nil)
-	return err
-}
-
-// ChangeCoordinatorsExcluding works like ChangeCoordinators, but never selects one of the excluded process groups as a
-// coordinator. It returns the process groups of the new coordinators. If no valid set of coordinators can be selected,
-// the returned error wraps ErrCoordinatorSelection.
-func ChangeCoordinatorsExcluding(
 	logger logr.Logger,
 	adminClient fdbadminclient.AdminClient,
 	cluster *fdbv1beta2.FoundationDBCluster,
@@ -221,26 +210,6 @@ func selectCoordinatorsLocalities(
 	}
 
 	return coordinators, nil
-}
-
-// SelectCoordinators will return a set of new coordinators.
-func SelectCoordinators(
-	logger logr.Logger,
-	cluster *fdbv1beta2.FoundationDBCluster,
-	status *fdbv1beta2.FoundationDBStatus,
-	pendingRemovals map[fdbv1beta2.ProcessGroupID]time.Time,
-) ([]fdbv1beta2.ProcessAddress, error) {
-	coordinators, err := selectCoordinatorsLocalities(logger, cluster, status, pendingRemovals)
-	if err != nil {
-		return nil, err
-	}
-
-	coordinatorAddresses := make([]fdbv1beta2.ProcessAddress, len(coordinators))
-	for index, process := range coordinators {
-		coordinatorAddresses[index] = GetCoordinatorAddress(cluster, process)
-	}
-
-	return coordinatorAddresses, nil
 }
 
 // GetCoordinatorAddress returns the coordinator address.

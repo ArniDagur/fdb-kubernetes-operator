@@ -89,12 +89,9 @@ func UpdateForwardingCoordinators(
 	now time.Time,
 ) {
 	for _, processGroup := range processGroups {
-		if processGroup.ForwardingCoordinatorSince == nil {
-			continue
-		}
-
 		_, isCoordinator := currentCoordinators[string(processGroup.ProcessGroupID)]
-		if isCoordinator || !cluster.IsForwardingCoordinator(processGroup, now) {
+		_, forwarding := cluster.GetForwardingCoordinatorUntil(processGroup, now)
+		if isCoordinator || !forwarding {
 			processGroup.ForwardingCoordinatorSince = nil
 		}
 	}

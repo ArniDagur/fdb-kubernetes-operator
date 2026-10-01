@@ -56,7 +56,7 @@ var _ = Describe("Change coordinators while excluding process groups", func() {
 			excluded[processGroup.ProcessGroupID] = fdbv1beta2.None{}
 		}
 
-		newCoordinators, err := ChangeCoordinatorsExcluding(
+		newCoordinators, err := ChangeCoordinators(
 			logr.Discard(),
 			adminClient,
 			cluster,
@@ -102,7 +102,7 @@ var _ = Describe("Change coordinators while excluding process groups", func() {
 			}
 			previousConnectionString := cluster.Status.ConnectionString
 
-			newCoordinators, err := ChangeCoordinatorsExcluding(
+			newCoordinators, err := ChangeCoordinators(
 				logr.Discard(),
 				adminClient,
 				cluster,

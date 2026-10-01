@@ -2865,19 +2865,21 @@ func (cluster *FoundationDBCluster) GetCoordinatorForwardingGracePeriod() time.D
 	return time.Duration(seconds) * time.Second
 }
 
-// IsForwardingCoordinator returns true if the process group stopped being a coordinator less than the coordinator
-// forwarding grace period ago, so it must keep its address.
-func (cluster *FoundationDBCluster) IsForwardingCoordinator(
+// GetForwardingCoordinatorUntil returns when the coordinator forwarding grace period of the process group ends, and
+// true if the process group stopped being a coordinator less than the grace period before now, so it must keep its
+// address until then.
+func (cluster *FoundationDBCluster) GetForwardingCoordinatorUntil(
 	processGroup *ProcessGroupStatus,
 	now time.Time,
-) bool {
+) (time.Time, bool) {
 	if processGroup.ForwardingCoordinatorSince == nil {
-		return false
+		return time.Time{}, false
 	}
 
-	return now.Before(
-		processGroup.ForwardingCoordinatorSince.Add(cluster.GetCoordinatorForwardingGracePeriod()),
+	until := processGroup.ForwardingCoordinatorSince.Add(
+		cluster.GetCoordinatorForwardingGracePeriod(),
 	)
+	return until, now.Before(until)
 }
 
 // GetWaitBetweenRemovalsSeconds returns the WaitDurationBetweenRemovals if set or defaults to 60s.

@@ -76,7 +76,7 @@ func changeCoordinatorsAwayFrom(
 	pendingAddressChange map[fdbv1beta2.ProcessGroupID]fdbv1beta2.None,
 	fallback bool,
 ) error {
-	newCoordinators, err := coordinator.ChangeCoordinatorsExcluding(
+	newCoordinators, err := coordinator.ChangeCoordinators(
 		logger,
 		adminClient,
 		cluster,
@@ -90,7 +90,7 @@ func changeCoordinatorsAwayFrom(
 			"error",
 			err.Error(),
 		)
-		newCoordinators, err = coordinator.ChangeCoordinatorsExcluding(
+		newCoordinators, err = coordinator.ChangeCoordinators(
 			logger,
 			adminClient,
 			cluster,
@@ -122,10 +122,50 @@ func coordinatorsWithPendingAddressChange(
 	return result
 }
 
-// forwardingCoordinatorRequeue returns the requeue for process groups that keep their address until the forwarding
-// grace period is over. until is the earliest time any of them may change its address.
-func forwardingCoordinatorRequeue(message string, until time.Time) *requeue {
-	delay := max(time.Until(until), time.Second)
+// forwardingCoordinatorHold collects the previous coordinators that keep their address because their running
+// processes forward clients to the new coordinators.
+type forwardingCoordinatorHold struct {
+	// until is the earliest time one of the held process groups may change its address.
+	until time.Time
+}
 
-	return &requeue{message: message, delay: delay, delayedRequeue: true}
+// holds returns true if the process group must keep its address for now. Only running processes can forward
+// clients, so process groups without running processes are never held.
+func (hold *forwardingCoordinatorHold) holds(
+	logger logr.Logger,
+	cluster *fdbv1beta2.FoundationDBCluster,
+	processGroup *fdbv1beta2.ProcessGroupStatus,
+	processes []fdbv1beta2.FoundationDBStatusProcessInfo,
+	now time.Time,
+) bool {
+	until, forwarding := cluster.GetForwardingCoordinatorUntil(processGroup, now)
+	if !forwarding || len(processes) == 0 {
+		return false
+	}
+
+	logger.Info(
+		"Keep the address of the previous coordinator, it forwards clients to the new coordinators",
+		"processGroupID",
+		processGroup.ProcessGroupID,
+		"until",
+		until,
+	)
+	if hold.until.IsZero() || until.Before(hold.until) {
+		hold.until = until
+	}
+
+	return true
+}
+
+// requeue returns the requeue until the first held process group may change its address, or nil if none is held.
+func (hold *forwardingCoordinatorHold) requeue(message string) *requeue {
+	if hold.until.IsZero() {
+		return nil
+	}
+
+	return &requeue{
+		message:        message,
+		delay:          max(time.Until(hold.until), time.Second),
+		delayedRequeue: true,
+	}
 }

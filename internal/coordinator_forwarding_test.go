@@ -151,12 +151,12 @@ var _ = Describe("coordinator forwarding", func() {
 				)
 				Expect(cluster.Status.ProcessGroups[0].ForwardingCoordinatorSince).NotTo(BeNil())
 				Expect(cluster.Status.ProcessGroups[3].ForwardingCoordinatorSince).To(BeNil())
-				Expect(
-					cluster.IsForwardingCoordinator(
-						cluster.Status.ProcessGroups[0],
-						now.Add(599*time.Second),
-					),
-				).To(BeTrue())
+				until, forwarding := cluster.GetForwardingCoordinatorUntil(
+					cluster.Status.ProcessGroups[0],
+					now.Add(599*time.Second),
+				)
+				Expect(forwarding).To(BeTrue())
+				Expect(until).To(Equal(now.Add(600 * time.Second)))
 
 				UpdateForwardingCoordinators(
 					cluster,

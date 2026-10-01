@@ -678,8 +678,7 @@ func getDurationIfPresent(input *metav1.Time) float64 {
 }
 
 // filterForwardingCoordinators removes the process groups that forward clients to the new coordinators from the
-// process groups to remove, as long as their processes are running. It returns the remaining process groups and the
-// requeue for the removed ones, or nil.
+// process groups to remove. It returns the remaining process groups and the requeue for the removed ones, or nil.
 func filterForwardingCoordinators(
 	logger logr.Logger,
 	cluster *fdbv1beta2.FoundationDBCluster,
@@ -687,42 +686,18 @@ func filterForwardingCoordinators(
 	processGroupsToRemove []*fdbv1beta2.ProcessGroupStatus,
 	now time.Time,
 ) ([]*fdbv1beta2.ProcessGroupStatus, *requeue) {
-	running := make(map[string]fdbv1beta2.None, len(status.Cluster.Processes))
-	for _, process := range status.Cluster.Processes {
-		running[process.Locality[fdbv1beta2.FDBLocalityInstanceIDKey]] = fdbv1beta2.None{}
-	}
-
-	var forwardingUntil time.Time
+	processInformation := getProcessesByProcessGroup(cluster, status)
+	var hold forwardingCoordinatorHold
 	remaining := make([]*fdbv1beta2.ProcessGroupStatus, 0, len(processGroupsToRemove))
 	for _, processGroup := range processGroupsToRemove {
-		_, isRunning := running[string(processGroup.ProcessGroupID)]
-		if !isRunning || !cluster.IsForwardingCoordinator(processGroup, now) {
+		processes := processInformation[string(processGroup.ProcessGroupID)]
+		if !hold.holds(logger, cluster, processGroup, processes, now) {
 			remaining = append(remaining, processGroup)
-			continue
-		}
-
-		until := processGroup.ForwardingCoordinatorSince.Add(
-			cluster.GetCoordinatorForwardingGracePeriod(),
-		)
-		logger.Info(
-			"Block removal of previous coordinator, it forwards clients to the new coordinators",
-			"processGroupID",
-			processGroup.ProcessGroupID,
-			"until",
-			until,
-		)
-		if forwardingUntil.IsZero() || until.Before(forwardingUntil) {
-			forwardingUntil = until
 		}
 	}
 
-	if forwardingUntil.IsZero() {
-		return remaining, nil
-	}
-
-	return remaining, forwardingCoordinatorRequeue(
+	return remaining, hold.requeue(
 		"Removal of previous coordinators waits for the coordinator forwarding grace period",
-		forwardingUntil,
 	)
 }
 

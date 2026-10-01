@@ -158,7 +158,7 @@ func holdBackCoordinatorAddressChanges(
 	}
 
 	waitingForCoordinatorChange := false
-	var forwardingUntil time.Time
+	var hold forwardingCoordinatorHold
 	for zone, pods := range updates {
 		remaining := make([]*corev1.Pod, 0, len(pods))
 		for _, pod := range pods {
@@ -166,14 +166,12 @@ func holdBackCoordinatorAddressChanges(
 				pod.Labels[cluster.GetProcessGroupIDLabel()],
 			)
 			processGroup, ok := processGroups[processGroupID]
-			processes := processInformation[string(processGroupID)]
-			// Only running processes can serve as coordinators or forward clients.
-			if !ok || len(processes) == 0 ||
-				!internal.ProcessGroupAddressWillChange(cluster, processGroup, pod) {
+			if !ok || !internal.ProcessGroupAddressWillChange(cluster, processGroup, pod) {
 				remaining = append(remaining, pod)
 				continue
 			}
 
+			processes := processInformation[string(processGroupID)]
 			if processesAreCoordinators(processes) {
 				logger.Info(
 					"Skip process group for update, the coordinators move before its address changes",
@@ -184,20 +182,7 @@ func holdBackCoordinatorAddressChanges(
 				continue
 			}
 
-			if cluster.IsForwardingCoordinator(processGroup, now) {
-				until := processGroup.ForwardingCoordinatorSince.Add(
-					cluster.GetCoordinatorForwardingGracePeriod(),
-				)
-				logger.Info(
-					"Skip process group for update, it forwards clients to the new coordinators",
-					"processGroupID",
-					processGroupID,
-					"until",
-					until,
-				)
-				if forwardingUntil.IsZero() || until.Before(forwardingUntil) {
-					forwardingUntil = until
-				}
+			if hold.holds(logger, cluster, processGroup, processes, now) {
 				continue
 			}
 
@@ -220,14 +205,9 @@ func holdBackCoordinatorAddressChanges(
 		}
 	}
 
-	if !forwardingUntil.IsZero() {
-		return forwardingCoordinatorRequeue(
-			"Pod updates of previous coordinators wait for the coordinator forwarding grace period",
-			forwardingUntil,
-		)
-	}
-
-	return nil
+	return hold.requeue(
+		"Pod updates of previous coordinators wait for the coordinator forwarding grace period",
+	)
 }
 
 // processesAreCoordinators returns true if one of the processes has the coordinator role.
