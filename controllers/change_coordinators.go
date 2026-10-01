@@ -128,15 +128,7 @@ func (c changeCoordinators) reconcile(
 		return &requeue{curError: err, delayedRequeue: true}
 	}
 
-	if hasValidCoordinators {
-		logger.Info("Moving coordinators before their address changes", "processGroups", moving)
-		r.Recorder.Event(
-			cluster,
-			corev1.EventTypeNormal,
-			"MovingCoordinators",
-			fmt.Sprintf("Moving coordinators before the address of %v changes", moving),
-		)
-	} else {
+	if !hasValidCoordinators {
 		logger.Info("Changing coordinators")
 		r.Recorder.Event(
 			cluster,
@@ -171,6 +163,17 @@ func (c changeCoordinators) reconcile(
 		}
 
 		return &requeue{curError: err, delayedRequeue: true}
+	}
+
+	// Reported after the change, as the wait for process groups at their final address can last many reconciliations.
+	if hasValidCoordinators {
+		logger.Info("Moved coordinators before their address changes", "processGroups", moving)
+		r.Recorder.Event(
+			cluster,
+			corev1.EventTypeNormal,
+			"MovedCoordinators",
+			fmt.Sprintf("Moved the coordinators before the address of %v changes", moving),
+		)
 	}
 
 	// Reset the SecondsSinceLastRecovered sine the operator just changed the coordinators, which will cause a recovery.
