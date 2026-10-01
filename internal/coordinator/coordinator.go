@@ -21,7 +21,9 @@
 package coordinator
 
 import (
+	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"strings"
 	"time"
@@ -32,35 +34,56 @@ import (
 	"github.com/go-logr/logr"
 )
 
+// ErrCoordinatorSelection is returned when no valid set of new coordinators could be selected.
+var ErrCoordinatorSelection = errors.New("could not select new coordinators")
+
 // ChangeCoordinators will change the coordinators and set the new connection string on the FoundationDBCluster resource.
+// The excluded process groups are never selected as coordinators. It returns the process groups of the new
+// coordinators. If no valid set of coordinators can be selected, the returned error wraps ErrCoordinatorSelection.
 func ChangeCoordinators(
 	logger logr.Logger,
 	adminClient fdbadminclient.AdminClient,
 	cluster *fdbv1beta2.FoundationDBCluster,
 	status *fdbv1beta2.FoundationDBStatus,
-) error {
-	var pendingRemovals map[fdbv1beta2.ProcessGroupID]time.Time
+	excluded map[fdbv1beta2.ProcessGroupID]fdbv1beta2.None,
+) ([]fdbv1beta2.ProcessGroupID, error) {
+	// Process groups pending removal are never selected, so the excluded process groups are skipped the same way.
+	pendingRemovals := make(map[fdbv1beta2.ProcessGroupID]time.Time, len(excluded))
 	if cluster.GetSynchronizationMode() == fdbv1beta2.SynchronizationModeGlobal {
-		var err error
-		pendingRemovals, err = adminClient.GetPendingForRemoval("")
+		globalRemovals, err := adminClient.GetPendingForRemoval("")
 		if err != nil {
-			return err
+			return nil, err
+		}
+
+		maps.Copy(pendingRemovals, globalRemovals)
+	}
+
+	for processGroupID := range excluded {
+		if _, ok := pendingRemovals[processGroupID]; !ok {
+			pendingRemovals[processGroupID] = time.Time{}
 		}
 	}
 
-	coordinators, err := SelectCoordinators(logger, cluster, status, pendingRemovals)
+	localities, err := selectCoordinatorsLocalities(logger, cluster, status, pendingRemovals)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("%w: %w", ErrCoordinatorSelection, err)
+	}
+
+	coordinators := make([]fdbv1beta2.ProcessAddress, len(localities))
+	processGroupIDs := make([]fdbv1beta2.ProcessGroupID, len(localities))
+	for index, process := range localities {
+		coordinators[index] = GetCoordinatorAddress(cluster, process)
+		processGroupIDs[index] = fdbv1beta2.ProcessGroupID(process.ID)
 	}
 
 	logger.Info("Final coordinators candidates", "coordinators", coordinators)
 	connectionString, err := adminClient.ChangeCoordinators(coordinators)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	cluster.Status.ConnectionString = connectionString
 
-	return nil
+	return processGroupIDs, nil
 }
 
 // selectCandidates is a helper for Reconcile that picks non-excluded, not-being-removed class-matching process groups.
@@ -187,26 +210,6 @@ func selectCoordinatorsLocalities(
 	}
 
 	return coordinators, nil
-}
-
-// SelectCoordinators will return a set of new coordinators.
-func SelectCoordinators(
-	logger logr.Logger,
-	cluster *fdbv1beta2.FoundationDBCluster,
-	status *fdbv1beta2.FoundationDBStatus,
-	pendingRemovals map[fdbv1beta2.ProcessGroupID]time.Time,
-) ([]fdbv1beta2.ProcessAddress, error) {
-	coordinators, err := selectCoordinatorsLocalities(logger, cluster, status, pendingRemovals)
-	if err != nil {
-		return nil, err
-	}
-
-	coordinatorAddresses := make([]fdbv1beta2.ProcessAddress, len(coordinators))
-	for index, process := range coordinators {
-		coordinatorAddresses[index] = GetCoordinatorAddress(cluster, process)
-	}
-
-	return coordinatorAddresses, nil
 }
 
 // GetCoordinatorAddress returns the coordinator address.

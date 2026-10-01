@@ -89,16 +89,25 @@ func (u updatePods) reconcile(
 		}
 	}
 
+	processInformation := getProcessesByProcessGroup(cluster, status)
 	updates, err := getPodsToUpdate(
 		ctx,
 		logger,
 		r,
 		cluster,
-		getProcessesByProcessGroup(cluster, status),
+		processInformation,
 	)
 	if err != nil {
 		return &requeue{curError: err, delay: podSchedulingDelayDuration, delayedRequeue: true}
 	}
+
+	heldBack := holdBackCoordinatorAddressChanges(
+		logger,
+		cluster,
+		updates,
+		processInformation,
+		time.Now(),
+	)
 
 	if len(updates) > 0 {
 		if cluster.Spec.AutomationOptions.PodUpdateStrategy == fdbv1beta2.PodUpdateStrategyReplacement {
@@ -118,10 +127,100 @@ func (u updatePods) reconcile(
 	}
 
 	if len(updates) == 0 {
-		return nil
+		return heldBack
 	}
 
-	return deletePodsForUpdates(ctx, r, cluster, updates, logger, status, adminClient)
+	result := deletePodsForUpdates(ctx, r, cluster, updates, logger, status, adminClient)
+	if result == nil {
+		return heldBack
+	}
+
+	return result
+}
+
+// holdBackCoordinatorAddressChanges removes the Pods from the updates whose address would change while their
+// processes are coordinators or forward clients to the new coordinators. The coordinators are moved first (see
+// changeCoordinators) and the previous coordinators keep their address for the coordinator forwarding grace period.
+// It returns the requeue for the held back Pods, or nil.
+func holdBackCoordinatorAddressChanges(
+	logger logr.Logger,
+	cluster *fdbv1beta2.FoundationDBCluster,
+	updates map[string][]*corev1.Pod,
+	processInformation map[string][]fdbv1beta2.FoundationDBStatusProcessInfo,
+	now time.Time,
+) *requeue {
+	processGroups := make(
+		map[fdbv1beta2.ProcessGroupID]*fdbv1beta2.ProcessGroupStatus,
+		len(cluster.Status.ProcessGroups),
+	)
+	for _, processGroup := range cluster.Status.ProcessGroups {
+		processGroups[processGroup.ProcessGroupID] = processGroup
+	}
+
+	waitingForCoordinatorChange := false
+	var hold forwardingCoordinatorHold
+	for zone, pods := range updates {
+		remaining := make([]*corev1.Pod, 0, len(pods))
+		for _, pod := range pods {
+			processGroupID := fdbv1beta2.ProcessGroupID(
+				pod.Labels[cluster.GetProcessGroupIDLabel()],
+			)
+			processGroup, ok := processGroups[processGroupID]
+			if !ok || !internal.ProcessGroupAddressWillChange(cluster, processGroup, pod) {
+				remaining = append(remaining, pod)
+				continue
+			}
+
+			processes := processInformation[string(processGroupID)]
+			if processesAreCoordinators(processes) {
+				logger.Info(
+					"Skip process group for update, the coordinators move before its address changes",
+					"processGroupID",
+					processGroupID,
+				)
+				waitingForCoordinatorChange = true
+				continue
+			}
+
+			if hold.holds(logger, cluster, processGroup, processes, now) {
+				continue
+			}
+
+			remaining = append(remaining, pod)
+		}
+
+		if len(remaining) == 0 {
+			delete(updates, zone)
+			continue
+		}
+
+		updates[zone] = remaining
+	}
+
+	if waitingForCoordinatorChange {
+		return &requeue{
+			message:        "Pod updates of coordinators wait until the coordinators have moved",
+			delay:          15 * time.Second,
+			delayedRequeue: true,
+		}
+	}
+
+	return hold.requeue(
+		"Pod updates of previous coordinators wait for the coordinator forwarding grace period",
+	)
+}
+
+// processesAreCoordinators returns true if one of the processes has the coordinator role.
+func processesAreCoordinators(processes []fdbv1beta2.FoundationDBStatusProcessInfo) bool {
+	for _, process := range processes {
+		for _, role := range process.Roles {
+			if role.Role == string(fdbv1beta2.ProcessRoleCoordinator) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // processGroupIsUnavailable returns true if the process group is unavailable.
