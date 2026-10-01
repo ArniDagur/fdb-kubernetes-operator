@@ -403,6 +403,12 @@ type ProcessGroupStatus struct {
 	// Machine represents the last seen machine from the cluster status. This can be used if a Pod or process
 	// is not running and would be missing in the cluster status. The information is gathered from the locality information.
 	Machine Machine `json:"machine,omitempty"`
+	// ForwardingCoordinatorSince is the time when this process group stopped being a coordinator while its process
+	// was still running. Until spec.automationOptions.coordinatorForwardingGracePeriodSeconds have passed, the
+	// operator doesn't remove the process group or change its address, so that the process can forward clients to
+	// the new coordinators.
+	// +optional
+	ForwardingCoordinatorSince *metav1.Time `json:"forwardingCoordinatorSince,omitempty"`
 }
 
 // String returns string representation.
@@ -1353,6 +1359,16 @@ type FoundationDBClusterAutomationOptions struct {
 	// where the fault tolerance check still includes the already deleted processes.
 	// Defaults to 60.
 	WaitBetweenRemovalsSeconds *int `json:"waitBetweenRemovalsSeconds,omitempty"`
+
+	// CoordinatorForwardingGracePeriodSeconds defines how long a process that stopped being a coordinator keeps
+	// running at its old address before the operator removes it or recreates it with a different address. During
+	// that time the old coordinator forwards clients with an outdated cluster file to the new coordinators, and those
+	// clients update their cluster file. If set, the operator also moves the coordinators away from a process group
+	// before its address changes, e.g. when host networking or the public IP source changes, or when a Pod is
+	// recreated while the cluster file uses IP addresses. Defaults to 0, which keeps the old behavior.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	CoordinatorForwardingGracePeriodSeconds *int `json:"coordinatorForwardingGracePeriodSeconds,omitempty"`
 
 	// PodUpdateStrategy defines how Pod spec changes are rolled out either by replacing Pods or by deleting Pods.
 	// The default for this is ReplaceTransactionSystem.
@@ -2836,6 +2852,35 @@ func (cluster *FoundationDBCluster) GetRemovalMode() PodUpdateMode {
 	}
 
 	return cluster.Spec.AutomationOptions.RemovalMode
+}
+
+// GetCoordinatorForwardingGracePeriod returns how long a process that stopped being a coordinator must keep its
+// address before the operator removes it or changes its address. 0 disables the coordinator forwarding handling.
+func (cluster *FoundationDBCluster) GetCoordinatorForwardingGracePeriod() time.Duration {
+	seconds := ptr.Deref(cluster.Spec.AutomationOptions.CoordinatorForwardingGracePeriodSeconds, 0)
+	if seconds < 0 {
+		return 0
+	}
+
+	return time.Duration(seconds) * time.Second
+}
+
+// IsForwardingCoordinator returns true if the process group stopped being a coordinator less than the coordinator
+// forwarding grace period ago, so it must keep its address.
+func (cluster *FoundationDBCluster) IsForwardingCoordinator(
+	processGroup *ProcessGroupStatus,
+	now time.Time,
+) bool {
+	if processGroup.ForwardingCoordinatorSince == nil {
+		return false
+	}
+
+	gracePeriod := cluster.GetCoordinatorForwardingGracePeriod()
+	if gracePeriod <= 0 {
+		return false
+	}
+
+	return now.Before(processGroup.ForwardingCoordinatorSince.Add(gracePeriod))
 }
 
 // GetWaitBetweenRemovalsSeconds returns the WaitDurationBetweenRemovals if set or defaults to 60s.

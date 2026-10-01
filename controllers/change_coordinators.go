@@ -22,6 +22,8 @@ package controllers
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/FoundationDB/fdb-kubernetes-operator/v2/internal/coordinator"
 	"github.com/FoundationDB/fdb-kubernetes-operator/v2/internal/locality"
@@ -80,7 +82,19 @@ func (c changeCoordinators) reconcile(
 		return &requeue{curError: err, delayedRequeue: true}
 	}
 
-	if hasValidCoordinators {
+	currentCoordinators := fdbstatus.GetCoordinatorsFromStatus(status)
+	var pendingAddressChange map[fdbv1beta2.ProcessGroupID]fdbv1beta2.None
+	if cluster.GetCoordinatorForwardingGracePeriod() > 0 {
+		pendingAddressChange, err = getProcessGroupsWithPendingAddressChange(ctx, r, cluster)
+		if err != nil {
+			return &requeue{curError: err, delayedRequeue: true}
+		}
+	}
+
+	// Valid coordinators are moved before their address changes, so that their processes can forward clients with an
+	// outdated cluster file to the new coordinators.
+	moving := coordinatorsWithPendingAddressChange(currentCoordinators, pendingAddressChange)
+	if hasValidCoordinators && len(moving) == 0 {
 		return nil
 	}
 
@@ -114,16 +128,48 @@ func (c changeCoordinators) reconcile(
 		return &requeue{curError: err, delayedRequeue: true}
 	}
 
-	logger.Info("Changing coordinators")
-	r.Recorder.Event(
-		cluster,
-		corev1.EventTypeNormal,
-		"ChangingCoordinators",
-		"Choosing new coordinators",
-	)
+	if hasValidCoordinators {
+		logger.Info("Moving coordinators before their address changes", "processGroups", moving)
+		r.Recorder.Event(
+			cluster,
+			corev1.EventTypeNormal,
+			"MovingCoordinators",
+			fmt.Sprintf("Moving coordinators before the address of %v changes", moving),
+		)
+	} else {
+		logger.Info("Changing coordinators")
+		r.Recorder.Event(
+			cluster,
+			corev1.EventTypeNormal,
+			"ChangingCoordinators",
+			"Choosing new coordinators",
+		)
+	}
 
-	err = coordinator.ChangeCoordinators(logger, adminClient, cluster, status)
+	// Coordinators that are still valid are only moved to process groups that already have their final address.
+	// Invalid coordinators are replaced even if only process groups with a pending address change can take over.
+	err = changeCoordinatorsAwayFrom(
+		logger,
+		adminClient,
+		cluster,
+		status,
+		currentCoordinators,
+		pendingAddressChange,
+		!hasValidCoordinators,
+	)
 	if err != nil {
+		if hasValidCoordinators && errors.Is(err, coordinator.ErrCoordinatorSelection) {
+			logger.Info(
+				"Waiting for more process groups at their final address to move the coordinators",
+				"error",
+				err.Error(),
+			)
+			return &requeue{
+				message:        "waiting for more process groups at their final address to move the coordinators",
+				delayedRequeue: true,
+			}
+		}
+
 		return &requeue{curError: err, delayedRequeue: true}
 	}
 

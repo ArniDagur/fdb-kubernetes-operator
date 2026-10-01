@@ -116,9 +116,18 @@ func (u removeProcessGroups) reconcile(
 
 	// Ensure we only remove process groups that are not blocked to be removed by the buggify config.
 	processGroupsToRemove = buggify.FilterBlockedRemovals(cluster, processGroupsToRemove)
+	// Previous coordinators keep running until the coordinator forwarding grace period is over, so that clients with
+	// an outdated cluster file are forwarded to the new coordinators.
+	processGroupsToRemove, forwardingRequeue := filterForwardingCoordinators(
+		logger,
+		cluster,
+		status,
+		processGroupsToRemove,
+		time.Now(),
+	)
 	// If all of the process groups are filtered out we can stop doing the next steps.
 	if len(processGroupsToRemove) == 0 {
-		return nil
+		return forwardingRequeue
 	}
 
 	// We don't use the "cached" of the cluster status from the CRD to minimize the window between data loss (e.g. a node
@@ -197,7 +206,7 @@ func (u removeProcessGroups) reconcile(
 		return &requeue{curError: err, delayedRequeue: true, delay: 60 * time.Second}
 	}
 
-	return nil
+	return forwardingRequeue
 }
 
 func removeProcessGroup(
@@ -666,6 +675,59 @@ func getDurationIfPresent(input *metav1.Time) float64 {
 	}
 
 	return unknownDurationSeconds
+}
+
+// filterForwardingCoordinators removes the process groups that forward clients to the new coordinators from the
+// process groups to remove, as long as their processes are running. It returns the remaining process groups and the
+// requeue for the removed ones, or nil.
+func filterForwardingCoordinators(
+	logger logr.Logger,
+	cluster *fdbv1beta2.FoundationDBCluster,
+	status *fdbv1beta2.FoundationDBStatus,
+	processGroupsToRemove []*fdbv1beta2.ProcessGroupStatus,
+	now time.Time,
+) ([]*fdbv1beta2.ProcessGroupStatus, *requeue) {
+	if cluster.GetCoordinatorForwardingGracePeriod() <= 0 {
+		return processGroupsToRemove, nil
+	}
+
+	running := make(map[string]fdbv1beta2.None, len(status.Cluster.Processes))
+	for _, process := range status.Cluster.Processes {
+		running[process.Locality[fdbv1beta2.FDBLocalityInstanceIDKey]] = fdbv1beta2.None{}
+	}
+
+	var forwardingUntil time.Time
+	remaining := make([]*fdbv1beta2.ProcessGroupStatus, 0, len(processGroupsToRemove))
+	for _, processGroup := range processGroupsToRemove {
+		_, isRunning := running[string(processGroup.ProcessGroupID)]
+		if !isRunning || !cluster.IsForwardingCoordinator(processGroup, now) {
+			remaining = append(remaining, processGroup)
+			continue
+		}
+
+		until := processGroup.ForwardingCoordinatorSince.Add(
+			cluster.GetCoordinatorForwardingGracePeriod(),
+		)
+		logger.Info(
+			"Block removal of previous coordinator, it forwards clients to the new coordinators",
+			"processGroupID",
+			processGroup.ProcessGroupID,
+			"until",
+			until,
+		)
+		if forwardingUntil.IsZero() || until.Before(forwardingUntil) {
+			forwardingUntil = until
+		}
+	}
+
+	if forwardingUntil.IsZero() {
+		return remaining, nil
+	}
+
+	return remaining, forwardingCoordinatorRequeue(
+		"Removal of previous coordinators waits for the coordinator forwarding grace period",
+		forwardingUntil,
+	)
 }
 
 func (r *FoundationDBClusterReconciler) getProcessGroupsToRemove(

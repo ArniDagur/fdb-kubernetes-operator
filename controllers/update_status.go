@@ -211,6 +211,13 @@ func (c updateStatus) reconcile(
 		}
 	}
 
+	internal.UpdateForwardingCoordinators(
+		cluster,
+		clusterStatus.ProcessGroups,
+		fdbstatus.GetCoordinatorsFromStatus(databaseStatus),
+		time.Now(),
+	)
+
 	existingConfigMap := &corev1.ConfigMap{}
 	err = r.Get(
 		ctx,
