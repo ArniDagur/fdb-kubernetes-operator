@@ -29,7 +29,6 @@ import (
 	"github.com/FoundationDB/fdb-kubernetes-operator/v2/internal/coordination"
 
 	fdbv1beta2 "github.com/FoundationDB/fdb-kubernetes-operator/v2/api/v1beta2"
-	"github.com/FoundationDB/fdb-kubernetes-operator/v2/internal/coordinator"
 	"github.com/FoundationDB/fdb-kubernetes-operator/v2/pkg/fdbstatus"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -332,7 +331,23 @@ func (e excludeProcesses) reconcile(
 	if coordinatorExcluded {
 		// If a coordinator should be excluded, we will change the coordinators directly after the exclusion.
 		// This should reduce the observed recoveries, see: https://github.com/FoundationDB/fdb-kubernetes-operator/issues/2018.
-		coordinatorErr := coordinator.ChangeCoordinators(logger, adminClient, cluster, status)
+		var pendingAddressChange map[fdbv1beta2.ProcessGroupID]fdbv1beta2.None
+		if cluster.GetCoordinatorForwardingGracePeriod() > 0 {
+			pendingAddressChange, err = getProcessGroupsWithPendingAddressChange(ctx, r, cluster)
+			if err != nil {
+				return &requeue{curError: err, delayedRequeue: true}
+			}
+		}
+
+		coordinatorErr := changeCoordinatorsAwayFrom(
+			logger,
+			adminClient,
+			cluster,
+			status,
+			fdbstatus.GetCoordinatorsFromStatus(status),
+			pendingAddressChange,
+			true,
+		)
 		if coordinatorErr != nil {
 			return &requeue{curError: coordinatorErr, delayedRequeue: true}
 		}

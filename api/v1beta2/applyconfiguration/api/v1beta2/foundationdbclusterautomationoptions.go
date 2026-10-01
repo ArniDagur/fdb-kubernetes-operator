@@ -74,6 +74,13 @@ type FoundationDBClusterAutomationOptionsApplyConfiguration struct {
 	// where the fault tolerance check still includes the already deleted processes.
 	// Defaults to 60.
 	WaitBetweenRemovalsSeconds *int `json:"waitBetweenRemovalsSeconds,omitempty"`
+	// CoordinatorForwardingGracePeriodSeconds defines how long a process that stopped being a coordinator keeps
+	// running at its old address before the operator removes it or recreates it with a different address. During
+	// that time the old coordinator forwards clients with an outdated cluster file to the new coordinators, and those
+	// clients update their cluster file. If set, the operator also moves the coordinators away from a process group
+	// before its address changes, e.g. when host networking or the public IP source changes, or when a Pod is
+	// recreated while the cluster file uses IP addresses. Defaults to 0, which keeps the old behavior.
+	CoordinatorForwardingGracePeriodSeconds *int `json:"coordinatorForwardingGracePeriodSeconds,omitempty"`
 	// PodUpdateStrategy defines how Pod spec changes are rolled out either by replacing Pods or by deleting Pods.
 	// The default for this is ReplaceTransactionSystem.
 	PodUpdateStrategy *apiv1beta2.PodUpdateStrategy `json:"podUpdateStrategy,omitempty"`
@@ -216,6 +223,14 @@ func (b *FoundationDBClusterAutomationOptionsApplyConfiguration) WithRemovalMode
 // If called multiple times, the WaitBetweenRemovalsSeconds field is set to the value of the last call.
 func (b *FoundationDBClusterAutomationOptionsApplyConfiguration) WithWaitBetweenRemovalsSeconds(value int) *FoundationDBClusterAutomationOptionsApplyConfiguration {
 	b.WaitBetweenRemovalsSeconds = &value
+	return b
+}
+
+// WithCoordinatorForwardingGracePeriodSeconds sets the CoordinatorForwardingGracePeriodSeconds field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the CoordinatorForwardingGracePeriodSeconds field is set to the value of the last call.
+func (b *FoundationDBClusterAutomationOptionsApplyConfiguration) WithCoordinatorForwardingGracePeriodSeconds(value int) *FoundationDBClusterAutomationOptionsApplyConfiguration {
+	b.CoordinatorForwardingGracePeriodSeconds = &value
 	return b
 }
 

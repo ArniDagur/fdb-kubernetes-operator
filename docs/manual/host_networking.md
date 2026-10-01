@@ -71,6 +71,31 @@ Turning it off works the same way, and the operator clears the port blocks once 
 
 Setting `hostNetwork: true` only in the pod template keeps working as before, without port blocks.
 
+### Clients with an outdated cluster file
+
+Turning host networking on or off changes the address of every process, so all coordinators change.
+An FDB client only needs one address from its cluster file that still answers: after a coordinator change, the previous coordinators forward clients to the new ones, and the clients rewrite their cluster file.
+That only works while the previous coordinator processes still run at their old address.
+
+Set `automationOptions.coordinatorForwardingGracePeriodSeconds` before you change the network mode:
+
+```yaml
+spec:
+  automationOptions:
+    coordinatorForwardingGracePeriodSeconds: 3600
+```
+
+With a grace period, the operator moves the coordinators to process groups that already have their new address before it touches the old coordinators.
+The old coordinators keep running at their old address for the grace period, then they are migrated as well.
+A previous coordinator whose process isn't running is not held back, because it can't forward clients.
+The migration takes at least the grace period longer.
+
+Clients that don't connect at all during the grace period, and whose cluster file isn't updated in another way, can't find the cluster afterwards.
+Clients that read the cluster file from the ConfigMap the operator maintains get the new connection string from there.
+
+The same setting also protects clients when the public IP source changes, when a coordinator process group is removed, and when Pods are recreated while the cluster file uses IP addresses.
+The default is 0, which keeps the previous behavior.
+
 Before downgrading to an operator version without host networking support, turn host networking off and wait until no process group has a `portBlock`.
 
 ## Limitations

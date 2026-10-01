@@ -69,6 +69,9 @@ spec:
                     type: boolean
                   configureDatabase:
                     type: boolean
+                  coordinatorForwardingGracePeriodSeconds:
+                    minimum: 0
+                    type: integer
                   databaseInteractionMode:
                     maxLength: 256
                     type: string
@@ -4910,6 +4913,9 @@ spec:
                       type: string
                     faultDomain:
                       maxLength: 512
+                      type: string
+                    forwardingCoordinatorSince:
+                      format: date-time
                       type: string
                     machine:
                       maxLength: 512

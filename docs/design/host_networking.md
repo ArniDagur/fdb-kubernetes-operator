@@ -362,6 +362,20 @@ Disabling is the reverse. Pods are recreated or replaced on the pod network, `up
 
 **Operator rollback.** An operator version without the `PortBlock` field drops it when it writes the status, and then runs today's bare-IP logic. Before downgrading to a version older than PR 1, disable host networking and wait until no process group has a block. Versions that contain PRs 1–4 are safe to roll back to: they know the field and reject the enabled setting in `Validate`, so they stop reconciling instead of acting on shared IPs.
 
+### Clients with an outdated cluster file
+
+Turning host networking on or off changes the address of every process (IP and port), so every coordinator is replaced. An FDB client tries the coordinators in its cluster file one at a time until any one answers (`fdbclient/MonitorLeader.cpp`). After a coordinator change, every previous coordinator durably stores the new connection string and answers clients that still use the old one with it (`fdbserver/coordinator/Coordination.cpp`, `setForward` and `serveOpenDatabaseRequests`). One such answer is enough for the client to switch and rewrite its cluster file. Every fdbserver runs the coordination server, so a process keeps forwarding for as long as it runs at its old address.
+
+Without further measures, the old coordinator processes disappear right after the coordinator change: replaced process groups are removed, and recreated pods come back at a new address. A client that wasn't connected during the change then finds nothing at any address in its cluster file.
+
+`automationOptions.coordinatorForwardingGracePeriodSeconds` (default 0, which keeps the previous behavior) closes that gap:
+
+1. `changeCoordinators` moves the coordinators away from every process group whose address is about to change, before that happens. New coordinators are only selected among process groups that already have their final address. Invalid coordinators are still replaced right away, falling back to any process group if needed.
+2. The previous coordinators get `processGroups[].forwardingCoordinatorSince`.
+3. `updatePods` and `removeProcessGroups` don't change the address of such a process group, or remove it, until the grace period is over. A process that isn't running can't forward, so it is not held back.
+
+A process group's address is about to change when it is marked for removal, when its pod moves between the pod network and the host network, when its public IP source changes, or when its pod is recreated while the cluster file uses IP addresses. So the setting also protects clients during public IP source changes, coordinator removals, and rolling updates of clusters that don't use DNS names in the cluster file.
+
 ### kubectl-fdb
 
 The plugin ships separately from the operator, so it reads each pod's block from the pod spec's env vars (`FDB_PORT_BLOCK_START` and `<CLASS>_SERVERS_PER_POD`) instead of from the operator's helpers.

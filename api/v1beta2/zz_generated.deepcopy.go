@@ -782,6 +782,11 @@ func (in *FoundationDBClusterAutomationOptions) DeepCopyInto(out *FoundationDBCl
 		*out = new(int)
 		**out = **in
 	}
+	if in.CoordinatorForwardingGracePeriodSeconds != nil {
+		in, out := &in.CoordinatorForwardingGracePeriodSeconds, &out.CoordinatorForwardingGracePeriodSeconds
+		*out = new(int)
+		**out = **in
+	}
 	if in.UseManagementAPI != nil {
 		in, out := &in.UseManagementAPI, &out.UseManagementAPI
 		*out = new(bool)
@@ -2174,6 +2179,10 @@ func (in *ProcessGroupStatus) DeepCopyInto(out *ProcessGroupStatus) {
 		in, out := &in.PortBlock, &out.PortBlock
 		*out = new(PortBlock)
 		**out = **in
+	}
+	if in.ForwardingCoordinatorSince != nil {
+		in, out := &in.ForwardingCoordinatorSince, &out.ForwardingCoordinatorSince
+		*out = (*in).DeepCopy()
 	}
 }
 

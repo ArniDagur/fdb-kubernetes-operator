@@ -36,6 +36,11 @@ type ProcessGroupStatusApplyConfiguration struct {
 	// PortBlock is the block of ports used by this process group's host-networked pod.
 	// Unset if the process group's pod uses the pod network.
 	PortBlock *PortBlockApplyConfiguration `json:"portBlock,omitempty"`
+	// ForwardingCoordinatorSince is the time when this process group stopped being a coordinator while its process
+	// was still running. Until spec.automationOptions.coordinatorForwardingGracePeriodSeconds have passed, the
+	// operator doesn't remove the process group or change its address, so that the process can forward clients to
+	// the new coordinators.
+	ForwardingCoordinatorSince *v1.Time `json:"forwardingCoordinatorSince,omitempty"`
 }
 
 // ProcessGroupStatusApplyConfiguration constructs a declarative configuration of the ProcessGroupStatus type for use with
@@ -128,5 +133,13 @@ func (b *ProcessGroupStatusApplyConfiguration) WithMachine(value apiv1beta2.Mach
 // If called multiple times, the PortBlock field is set to the value of the last call.
 func (b *ProcessGroupStatusApplyConfiguration) WithPortBlock(value *PortBlockApplyConfiguration) *ProcessGroupStatusApplyConfiguration {
 	b.PortBlock = value
+	return b
+}
+
+// WithForwardingCoordinatorSince sets the ForwardingCoordinatorSince field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ForwardingCoordinatorSince field is set to the value of the last call.
+func (b *ProcessGroupStatusApplyConfiguration) WithForwardingCoordinatorSince(value v1.Time) *ProcessGroupStatusApplyConfiguration {
+	b.ForwardingCoordinatorSince = &value
 	return b
 }
