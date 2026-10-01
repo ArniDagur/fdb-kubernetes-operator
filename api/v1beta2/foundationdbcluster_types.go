@@ -1361,12 +1361,11 @@ type FoundationDBClusterAutomationOptions struct {
 	WaitBetweenRemovalsSeconds *int `json:"waitBetweenRemovalsSeconds,omitempty"`
 
 	// CoordinatorForwardingGracePeriodSeconds defines how long a process that stopped being a coordinator keeps
-	// running at its old address before the operator removes it or recreates it with a different address. During
-	// that time the old coordinator forwards clients with an outdated cluster file to the new coordinators, and those
-	// clients update their cluster file. The operator also moves the coordinators away from a process group before
-	// its address changes, e.g. when the public IP source changes, or when a Pod is recreated while the cluster file
-	// uses IP addresses. Defaults to 600 (10 minutes). 0 turns this off: previous coordinators are removed or
-	// recreated right after the coordinator change.
+	// running at its old address before the operator removes it or recreates it with a different address. The
+	// operator moves the coordinators away from a process group before its address changes, e.g. when the public IP
+	// source changes, or when a Pod is recreated while the cluster file uses IP addresses. During the grace period
+	// the old coordinator forwards clients with an outdated cluster file to the new coordinators, and those clients
+	// update their cluster file. Defaults to 600 (10 minutes).
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	CoordinatorForwardingGracePeriodSeconds *int `json:"coordinatorForwardingGracePeriodSeconds,omitempty"`
@@ -2856,16 +2855,12 @@ func (cluster *FoundationDBCluster) GetRemovalMode() PodUpdateMode {
 }
 
 // GetCoordinatorForwardingGracePeriod returns how long a process that stopped being a coordinator must keep its
-// address before the operator removes it or changes its address. Defaults to 10 minutes; 0 disables the coordinator
-// forwarding handling.
+// address before the operator removes it or changes its address. Defaults to 10 minutes.
 func (cluster *FoundationDBCluster) GetCoordinatorForwardingGracePeriod() time.Duration {
 	seconds := ptr.Deref(
 		cluster.Spec.AutomationOptions.CoordinatorForwardingGracePeriodSeconds,
 		600,
 	)
-	if seconds < 0 {
-		return 0
-	}
 
 	return time.Duration(seconds) * time.Second
 }
@@ -2880,12 +2875,9 @@ func (cluster *FoundationDBCluster) IsForwardingCoordinator(
 		return false
 	}
 
-	gracePeriod := cluster.GetCoordinatorForwardingGracePeriod()
-	if gracePeriod <= 0 {
-		return false
-	}
-
-	return now.Before(processGroup.ForwardingCoordinatorSince.Add(gracePeriod))
+	return now.Before(
+		processGroup.ForwardingCoordinatorSince.Add(cluster.GetCoordinatorForwardingGracePeriod()),
+	)
 }
 
 // GetWaitBetweenRemovalsSeconds returns the WaitDurationBetweenRemovals if set or defaults to 60s.

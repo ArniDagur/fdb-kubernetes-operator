@@ -55,24 +55,18 @@ func ProcessGroupAddressWillChange(
 
 // MarkForwardingCoordinators records that the previous coordinators, which are not part of the new coordinators,
 // stopped being coordinators now. Only process groups whose processes were running as coordinators are marked, as only
-// running processes can forward clients to the new coordinators. It does nothing if the coordinator forwarding grace
-// period is disabled, and returns true if a process group was marked.
+// running processes can forward clients to the new coordinators.
 func MarkForwardingCoordinators(
 	cluster *fdbv1beta2.FoundationDBCluster,
 	previousCoordinators map[string]fdbv1beta2.None,
 	newCoordinators []fdbv1beta2.ProcessGroupID,
 	now time.Time,
-) bool {
-	if cluster.GetCoordinatorForwardingGracePeriod() <= 0 {
-		return false
-	}
-
+) {
 	current := make(map[fdbv1beta2.ProcessGroupID]fdbv1beta2.None, len(newCoordinators))
 	for _, processGroupID := range newCoordinators {
 		current[processGroupID] = fdbv1beta2.None{}
 	}
 
-	marked := false
 	for _, processGroup := range cluster.Status.ProcessGroups {
 		if _, wasCoordinator := previousCoordinators[string(processGroup.ProcessGroupID)]; !wasCoordinator {
 			continue
@@ -83,10 +77,7 @@ func MarkForwardingCoordinators(
 		}
 
 		processGroup.ForwardingCoordinatorSince = &metav1.Time{Time: now}
-		marked = true
 	}
-
-	return marked
 }
 
 // UpdateForwardingCoordinators clears the forwarding marker of process groups that are coordinators again, or whose

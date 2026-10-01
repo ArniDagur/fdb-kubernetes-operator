@@ -57,7 +57,7 @@ func CreateDefaultCluster() *fdbv1beta2.FoundationDBCluster {
 					TaintReplacementTimeSeconds: ptr.To(1),
 				},
 				WaitBetweenRemovalsSeconds: ptr.To(0),
-				// Tests that cover coordinator forwarding enable it.
+				// Most tests expect previous coordinators to be gone within one reconciliation.
 				CoordinatorForwardingGracePeriodSeconds: ptr.To(0),
 			},
 			MinimumUptimeSecondsForBounce: 1,

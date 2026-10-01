@@ -119,13 +119,12 @@ var _ = Describe("coordinator forwarding", func() {
 		})
 
 		It("should mark the previous coordinators that are not coordinators anymore", func() {
-			marked := MarkForwardingCoordinators(
+			MarkForwardingCoordinators(
 				cluster,
 				map[string]fdbv1beta2.None{"log-1": {}, "log-2": {}, "log-3": {}},
 				[]fdbv1beta2.ProcessGroupID{"log-2", "log-4"},
 				now,
 			)
-			Expect(marked).To(BeTrue())
 			since := map[fdbv1beta2.ProcessGroupID]*metav1.Time{}
 			for _, processGroup := range cluster.Status.ProcessGroups {
 				since[processGroup.ProcessGroupID] = processGroup.ForwardingCoordinatorSince
@@ -133,17 +132,6 @@ var _ = Describe("coordinator forwarding", func() {
 			Expect(since).To(Equal(map[fdbv1beta2.ProcessGroupID]*metav1.Time{
 				"log-1": {Time: now}, "log-2": nil, "log-3": {Time: now}, "log-4": nil,
 			}))
-		})
-
-		It("should not mark anything when the grace period is disabled", func() {
-			cluster.Spec.AutomationOptions.CoordinatorForwardingGracePeriodSeconds = ptr.To(0)
-			Expect(MarkForwardingCoordinators(
-				cluster,
-				map[string]fdbv1beta2.None{"log-1": {}},
-				nil,
-				now,
-			)).To(BeFalse())
-			Expect(cluster.Status.ProcessGroups[0].ForwardingCoordinatorSince).To(BeNil())
 		})
 
 		It(

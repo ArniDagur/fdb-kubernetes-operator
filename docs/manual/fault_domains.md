@@ -493,8 +493,6 @@ spec:
     coordinatorForwardingGracePeriodSeconds: 3600
 ```
 
-Setting it to 0 turns this off: the operator then removes or recreates previous coordinators right after the coordinator change.
-
 ### Known limitations
 
 FoundationDB clusters that are spread across different DC's or Kubernetes clusters only support the same `coordinatorSelection`.

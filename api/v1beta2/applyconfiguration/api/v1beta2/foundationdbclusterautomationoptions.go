@@ -75,12 +75,11 @@ type FoundationDBClusterAutomationOptionsApplyConfiguration struct {
 	// Defaults to 60.
 	WaitBetweenRemovalsSeconds *int `json:"waitBetweenRemovalsSeconds,omitempty"`
 	// CoordinatorForwardingGracePeriodSeconds defines how long a process that stopped being a coordinator keeps
-	// running at its old address before the operator removes it or recreates it with a different address. During
-	// that time the old coordinator forwards clients with an outdated cluster file to the new coordinators, and those
-	// clients update their cluster file. The operator also moves the coordinators away from a process group before
-	// its address changes, e.g. when the public IP source changes, or when a Pod is recreated while the cluster file
-	// uses IP addresses. Defaults to 600 (10 minutes). 0 turns this off: previous coordinators are removed or
-	// recreated right after the coordinator change.
+	// running at its old address before the operator removes it or recreates it with a different address. The
+	// operator moves the coordinators away from a process group before its address changes, e.g. when the public IP
+	// source changes, or when a Pod is recreated while the cluster file uses IP addresses. During the grace period
+	// the old coordinator forwards clients with an outdated cluster file to the new coordinators, and those clients
+	// update their cluster file. Defaults to 600 (10 minutes).
 	CoordinatorForwardingGracePeriodSeconds *int `json:"coordinatorForwardingGracePeriodSeconds,omitempty"`
 	// PodUpdateStrategy defines how Pod spec changes are rolled out either by replacing Pods or by deleting Pods.
 	// The default for this is ReplaceTransactionSystem.

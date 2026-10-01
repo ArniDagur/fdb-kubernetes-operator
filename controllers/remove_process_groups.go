@@ -687,10 +687,6 @@ func filterForwardingCoordinators(
 	processGroupsToRemove []*fdbv1beta2.ProcessGroupStatus,
 	now time.Time,
 ) ([]*fdbv1beta2.ProcessGroupStatus, *requeue) {
-	if cluster.GetCoordinatorForwardingGracePeriod() <= 0 {
-		return processGroupsToRemove, nil
-	}
-
 	running := make(map[string]fdbv1beta2.None, len(status.Cluster.Processes))
 	for _, process := range status.Cluster.Processes {
 		running[process.Locality[fdbv1beta2.FDBLocalityInstanceIDKey]] = fdbv1beta2.None{}

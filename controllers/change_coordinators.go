@@ -83,12 +83,9 @@ func (c changeCoordinators) reconcile(
 	}
 
 	currentCoordinators := fdbstatus.GetCoordinatorsFromStatus(status)
-	var pendingAddressChange map[fdbv1beta2.ProcessGroupID]fdbv1beta2.None
-	if cluster.GetCoordinatorForwardingGracePeriod() > 0 {
-		pendingAddressChange, err = getProcessGroupsWithPendingAddressChange(ctx, r, cluster)
-		if err != nil {
-			return &requeue{curError: err, delayedRequeue: true}
-		}
+	pendingAddressChange, err := getProcessGroupsWithPendingAddressChange(ctx, r, cluster)
+	if err != nil {
+		return &requeue{curError: err, delayedRequeue: true}
 	}
 
 	// Valid coordinators are moved before their address changes, so that their processes can forward clients with an

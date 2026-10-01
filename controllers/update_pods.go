@@ -149,10 +149,6 @@ func holdBackCoordinatorAddressChanges(
 	processInformation map[string][]fdbv1beta2.FoundationDBStatusProcessInfo,
 	now time.Time,
 ) *requeue {
-	if cluster.GetCoordinatorForwardingGracePeriod() <= 0 {
-		return nil
-	}
-
 	processGroups := make(
 		map[fdbv1beta2.ProcessGroupID]*fdbv1beta2.ProcessGroupStatus,
 		len(cluster.Status.ProcessGroups),
