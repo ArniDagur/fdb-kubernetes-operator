@@ -57,6 +57,8 @@ func CreateDefaultCluster() *fdbv1beta2.FoundationDBCluster {
 					TaintReplacementTimeSeconds: ptr.To(1),
 				},
 				WaitBetweenRemovalsSeconds: ptr.To(0),
+				// Tests that cover coordinator forwarding enable it.
+				CoordinatorForwardingGracePeriodSeconds: ptr.To(0),
 			},
 			MinimumUptimeSecondsForBounce: 1,
 			// TODO (johscheuer): Change this to the default one and adjust all test cases.

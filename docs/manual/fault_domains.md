@@ -476,10 +476,16 @@ The operator supports the following classes as coordinators:
 An FDB client tries the coordinators in its cluster file until one of them answers.
 After a coordinator change, the previous coordinators forward clients that still use the old connection string to the new coordinators, and the clients update their cluster file.
 This only works while the previous coordinator processes still run at their old address.
-Without further configuration the operator removes or recreates them right after the coordinator change, so a client that wasn't connected during the change can't find the cluster afterwards.
 
 The address of a coordinator changes when its process group is removed, when the public IP source changes, or when its Pod is recreated while the cluster file uses IP addresses instead of DNS names.
-To keep previous coordinators reachable in these cases, set a grace period:
+In these cases the operator first moves the coordinators away from that process group, to process groups that already have their final address.
+The previous coordinators are marked with `forwardingCoordinatorSince` in their process group status and keep their address for a grace period of 10 minutes; then they are removed or recreated as usual.
+A previous coordinator whose process isn't running is not held back, because it can't forward clients.
+The grace period only gives clients time to update their cluster file; the cluster itself is safe without it.
+
+Clients that read their cluster file from the ConfigMap the operator maintains always get the current connection string from there.
+Clients that don't connect at all during the grace period, and whose cluster file isn't updated in another way, can't find the cluster afterwards.
+For clients that connect less often, set a longer grace period:
 
 ```yaml
 spec:
@@ -487,14 +493,7 @@ spec:
     coordinatorForwardingGracePeriodSeconds: 3600
 ```
 
-With a grace period, the operator moves the coordinators away from a process group before its address changes, to process groups that already have their final address.
-The previous coordinators are marked with `forwardingCoordinatorSince` in their process group status and keep their address until the grace period is over; then they are removed or recreated as usual.
-A previous coordinator whose process isn't running is not held back, because it can't forward clients.
-The grace period only gives clients time to update their cluster file; the cluster itself is safe without it.
-
-Clients that read their cluster file from the ConfigMap the operator maintains always get the current connection string from there.
-Clients that don't connect at all during the grace period, and whose cluster file isn't updated in another way, can't find the cluster afterwards.
-The default is 0, which keeps the previous behavior.
+Setting it to 0 turns this off: the operator then removes or recreates previous coordinators right after the coordinator change.
 
 ### Known limitations
 

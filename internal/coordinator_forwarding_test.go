@@ -105,12 +105,8 @@ var _ = Describe("coordinator forwarding", func() {
 		now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 
 		BeforeEach(func() {
+			// The default grace period of 10 minutes applies.
 			cluster = &fdbv1beta2.FoundationDBCluster{
-				Spec: fdbv1beta2.FoundationDBClusterSpec{
-					AutomationOptions: fdbv1beta2.FoundationDBClusterAutomationOptions{
-						CoordinatorForwardingGracePeriodSeconds: ptr.To(600),
-					},
-				},
 				Status: fdbv1beta2.FoundationDBClusterStatus{
 					ProcessGroups: []*fdbv1beta2.ProcessGroupStatus{
 						{
@@ -140,7 +136,7 @@ var _ = Describe("coordinator forwarding", func() {
 		})
 
 		It("should not mark anything when the grace period is disabled", func() {
-			cluster.Spec.AutomationOptions.CoordinatorForwardingGracePeriodSeconds = nil
+			cluster.Spec.AutomationOptions.CoordinatorForwardingGracePeriodSeconds = ptr.To(0)
 			Expect(MarkForwardingCoordinators(
 				cluster,
 				map[string]fdbv1beta2.None{"log-1": {}},

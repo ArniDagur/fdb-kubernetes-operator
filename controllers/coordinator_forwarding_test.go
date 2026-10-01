@@ -372,7 +372,7 @@ var _ = Describe("coordinator forwarding", func() {
 
 		When("the grace period is disabled", func() {
 			It("should remove it right away", func() {
-				cluster.Spec.AutomationOptions.CoordinatorForwardingGracePeriodSeconds = nil
+				cluster.Spec.AutomationOptions.CoordinatorForwardingGracePeriodSeconds = ptr.To(0)
 				Expect(k8sClient.Update(context.TODO(), cluster)).To(Succeed())
 				Expect(reconcileAndReload(cluster)).To(BeZero())
 				Expect(getProcessGroupByID(cluster, coordinatorID)).To(BeNil())

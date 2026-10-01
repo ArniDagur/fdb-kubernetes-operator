@@ -1363,9 +1363,10 @@ type FoundationDBClusterAutomationOptions struct {
 	// CoordinatorForwardingGracePeriodSeconds defines how long a process that stopped being a coordinator keeps
 	// running at its old address before the operator removes it or recreates it with a different address. During
 	// that time the old coordinator forwards clients with an outdated cluster file to the new coordinators, and those
-	// clients update their cluster file. If set, the operator also moves the coordinators away from a process group
-	// before its address changes, e.g. when host networking or the public IP source changes, or when a Pod is
-	// recreated while the cluster file uses IP addresses. Defaults to 0, which keeps the old behavior.
+	// clients update their cluster file. The operator also moves the coordinators away from a process group before
+	// its address changes, e.g. when the public IP source changes, or when a Pod is recreated while the cluster file
+	// uses IP addresses. Defaults to 600 (10 minutes). 0 turns this off: previous coordinators are removed or
+	// recreated right after the coordinator change.
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	CoordinatorForwardingGracePeriodSeconds *int `json:"coordinatorForwardingGracePeriodSeconds,omitempty"`
@@ -2855,9 +2856,10 @@ func (cluster *FoundationDBCluster) GetRemovalMode() PodUpdateMode {
 }
 
 // GetCoordinatorForwardingGracePeriod returns how long a process that stopped being a coordinator must keep its
-// address before the operator removes it or changes its address. 0 disables the coordinator forwarding handling.
+// address before the operator removes it or changes its address. Defaults to 10 minutes; 0 disables the coordinator
+// forwarding handling.
 func (cluster *FoundationDBCluster) GetCoordinatorForwardingGracePeriod() time.Duration {
-	seconds := ptr.Deref(cluster.Spec.AutomationOptions.CoordinatorForwardingGracePeriodSeconds, 0)
+	seconds := ptr.Deref(cluster.Spec.AutomationOptions.CoordinatorForwardingGracePeriodSeconds, 600)
 	if seconds < 0 {
 		return 0
 	}
