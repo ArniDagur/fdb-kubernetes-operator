@@ -2859,7 +2859,10 @@ func (cluster *FoundationDBCluster) GetRemovalMode() PodUpdateMode {
 // address before the operator removes it or changes its address. Defaults to 10 minutes; 0 disables the coordinator
 // forwarding handling.
 func (cluster *FoundationDBCluster) GetCoordinatorForwardingGracePeriod() time.Duration {
-	seconds := ptr.Deref(cluster.Spec.AutomationOptions.CoordinatorForwardingGracePeriodSeconds, 600)
+	seconds := ptr.Deref(
+		cluster.Spec.AutomationOptions.CoordinatorForwardingGracePeriodSeconds,
+		600,
+	)
 	if seconds < 0 {
 		return 0
 	}

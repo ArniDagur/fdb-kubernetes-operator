@@ -23,6 +23,7 @@ package coordinator
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"strings"
 	"time"
@@ -65,9 +66,7 @@ func ChangeCoordinatorsExcluding(
 			return nil, err
 		}
 
-		for processGroupID, timestamp := range globalRemovals {
-			pendingRemovals[processGroupID] = timestamp
-		}
+		maps.Copy(pendingRemovals, globalRemovals)
 	}
 
 	for processGroupID := range excluded {

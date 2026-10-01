@@ -3,7 +3,7 @@
  *
  * This source file is part of the FoundationDB open source project
  *
- * Copyright 2026 Apple Inc. and the FoundationDB project authors
+ * Copyright 2018-2026 Apple Inc. and the FoundationDB project authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -125,10 +125,7 @@ func coordinatorsWithPendingAddressChange(
 // forwardingCoordinatorRequeue returns the requeue for process groups that keep their address until the forwarding
 // grace period is over. until is the earliest time any of them may change its address.
 func forwardingCoordinatorRequeue(message string, until time.Time) *requeue {
-	delay := time.Until(until)
-	if delay < time.Second {
-		delay = time.Second
-	}
+	delay := max(time.Until(until), time.Second)
 
 	return &requeue{message: message, delay: delay, delayedRequeue: true}
 }
