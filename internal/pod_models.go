@@ -666,6 +666,13 @@ func GetPodSpec(
 		replaceContainers(podSpec.InitContainers, initContainer)
 	}
 
+	if cluster.UseHostNetwork() {
+		podSpec.HostNetwork = true
+		if podSpec.DNSPolicy == "" {
+			podSpec.DNSPolicy = corev1.DNSClusterFirstWithHostNet
+		}
+	}
+
 	replaceContainers(podSpec.Containers, mainContainer, sidecarContainer)
 
 	headlessService := GetHeadlessService(cluster)

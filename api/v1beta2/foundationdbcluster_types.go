@@ -2439,6 +2439,23 @@ func (cluster *FoundationDBCluster) GetPublicIPSource() PublicIPSource {
 	return ptr.Deref(cluster.Spec.Routing.PublicIPSource, PublicIPSourcePod)
 }
 
+// UseHostNetwork returns true if the FoundationDB pods of this cluster should run in the host network namespace.
+func (cluster *FoundationDBCluster) UseHostNetwork() bool {
+	return cluster.GetPublicIPSource() == PublicIPSourceHostNetwork
+}
+
+// validateHostNetwork returns the validation errors for the hostNetwork public IP source.
+func (cluster *FoundationDBCluster) validateHostNetwork(
+	allowedPodModifications *AllowedPodModifications,
+) []string {
+	if cluster.UseHostNetwork() && allowedPodModifications != nil &&
+		!ptr.Deref(allowedPodModifications.AllowHostNetwork, true) {
+		return []string{"the public IP source hostNetwork is not allowed by the operator"}
+	}
+
+	return nil
+}
+
 // LockOptions provides customization for locking global operations.
 type LockOptions struct {
 	// DisableLocks determines whether we should disable locking entirely.
@@ -2476,7 +2493,9 @@ type RoutingConfig struct {
 	// PublicIPSource specifies what source a process should use to get its
 	// public IPs.
 	//
-	// This supports the values `pod` and `service`.
+	// This supports the values `pod`, `service`, and `hostNetwork`. With `hostNetwork`, the pods run in the host
+	// network namespace and the processes use the node IP and the default ports, so no two pods may share a node.
+	// Changing the source replaces process groups.
 	PublicIPSource *PublicIPSource `json:"publicIPSource,omitempty"`
 
 	// PodIPFamily tells the pod which family of IP addresses to use.
@@ -2599,6 +2618,9 @@ const (
 
 	// PublicIPSourceService specifies that a pod gets its IP from a service.
 	PublicIPSourceService PublicIPSource = "service"
+
+	// PublicIPSourceHostNetwork specifies that a pod runs in the host network namespace and gets the node IP.
+	PublicIPSourceHostNetwork PublicIPSource = "hostNetwork"
 )
 
 // AddServersPerDisk adds serverPerDisk to the status field to keep track which ConfigMaps should be kept
@@ -3461,6 +3483,8 @@ func (cluster *FoundationDBCluster) Validate(
 			)
 		}
 	}
+
+	validations = append(validations, cluster.validateHostNetwork(allowedPodModifications)...)
 
 	if len(validations) == 0 {
 		return nil

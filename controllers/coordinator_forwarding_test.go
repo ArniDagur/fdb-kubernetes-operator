@@ -152,9 +152,9 @@ var _ = Describe("coordinator forwarding", func() {
 		}
 	}
 
-	When("the public IP source changes", func() {
+	DescribeTableSubtree("the public IP source changes", func(source fdbv1beta2.PublicIPSource) {
 		BeforeEach(func() {
-			cluster.Spec.Routing.PublicIPSource = ptr.To(fdbv1beta2.PublicIPSourceService)
+			cluster.Spec.Routing.PublicIPSource = ptr.To(source)
 			Expect(k8sClient.Update(context.TODO(), cluster)).To(Succeed())
 			// The previous coordinators are still waiting for their grace period.
 			Expect(reconcileAndReload(cluster)).To(BeNumerically(">", 0))
@@ -172,7 +172,10 @@ var _ = Describe("coordinator forwarding", func() {
 					Expect(pod).NotTo(BeNil())
 					Expect(
 						pod.Annotations[fdbv1beta2.PublicIPSourceAnnotation],
-					).To(Equal("service"))
+					).To(Equal(string(source)))
+					Expect(
+						pod.Spec.HostNetwork,
+					).To(Equal(source == fdbv1beta2.PublicIPSourceHostNetwork))
 				}
 			},
 		)
@@ -190,10 +193,16 @@ var _ = Describe("coordinator forwarding", func() {
 				).To(BeNil())
 			}
 			for _, pod := range getClusterPods(cluster) {
-				Expect(pod.Annotations[fdbv1beta2.PublicIPSourceAnnotation]).To(Equal("service"))
+				Expect(
+					pod.Annotations[fdbv1beta2.PublicIPSourceAnnotation],
+				).To(Equal(string(source)))
 			}
 		})
-	})
+	},
+		Entry("to service", fdbv1beta2.PublicIPSourceService),
+		// The mock client gives every host-networked pod its own node, so their IPs differ.
+		Entry("to hostNetwork", fdbv1beta2.PublicIPSourceHostNetwork),
+	)
 
 	When("the public IP source changes with one replacement at a time", func() {
 		BeforeEach(func() {

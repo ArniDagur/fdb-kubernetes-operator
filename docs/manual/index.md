@@ -18,6 +18,7 @@ For more information on that area, see the [Kubernetes documentation](https://ku
 1. [Replacements and Deletions](replacements_and_deletions.md)
 1. [Controlling Fault Domains](fault_domains.md)
 1. [Running with TLS](tls.md)
+1. [Running with Host Networking](host_networking.md)
 1. [Backup](backup.md)
 1. [Technical Design](technical_design.md)
 1. [Upgrades](upgrades.md)
