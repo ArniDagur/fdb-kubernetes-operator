@@ -38,6 +38,16 @@ var _ = Describe("coordinator forwarding", func() {
 				Name: fdbv1beta2.MainContainerName,
 			}}}}
 		}
+		blockPod := func() *corev1.Pod {
+			pod := podNetworkPod()
+			pod.Spec.Containers[0].Env = []corev1.EnvVar{
+				{Name: fdbv1beta2.EnvNamePortBlockStart, Value: "20000"},
+			}
+			return pod
+		}
+		enablePortBlocks := func(cluster *fdbv1beta2.FoundationDBCluster) {
+			cluster.Spec.Routing.PortBlocks = &fdbv1beta2.PortBlocksConfig{}
+		}
 
 		DescribeTable(
 			"the address will change",
@@ -70,6 +80,29 @@ var _ = Describe("coordinator forwarding", func() {
 					return nil
 				},
 				false,
+			),
+			Entry(
+				"port blocks enabled, pod without a block (DNS names in the cluster file)",
+				func(cluster *fdbv1beta2.FoundationDBCluster, _ *fdbv1beta2.ProcessGroupStatus) *corev1.Pod {
+					enablePortBlocks(cluster)
+					return podNetworkPod()
+				},
+				true,
+			),
+			Entry(
+				"port blocks enabled, pod with a block",
+				func(cluster *fdbv1beta2.FoundationDBCluster, _ *fdbv1beta2.ProcessGroupStatus) *corev1.Pod {
+					enablePortBlocks(cluster)
+					return blockPod()
+				},
+				false,
+			),
+			Entry(
+				"port blocks disabled, pod with a block",
+				func(_ *fdbv1beta2.FoundationDBCluster, _ *fdbv1beta2.ProcessGroupStatus) *corev1.Pod {
+					return blockPod()
+				},
+				true,
 			),
 			Entry(
 				"public IP source changed",

@@ -27,6 +27,7 @@ import (
 	"maps"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 
 	fdbv1beta2 "github.com/FoundationDB/fdb-kubernetes-operator/v2/api/v1beta2"
@@ -156,9 +157,31 @@ func InfoFromSidecar(
 	// This locality information is only used during the initial cluster file generation.
 	// So it should be good to only use the first process address here.
 	// This has the implication that in the initial cluster file only the first processes will be used.
+	address := cluster.GetFullAddress(substitutions[fdbv1beta2.EnvNamePublicIP], 1)
+	// Pods with a port block listen on the ports of their block.
+	if rawStart, ok := substitutions[fdbv1beta2.EnvNamePortBlockStart]; ok {
+		start, err := strconv.Atoi(rawStart)
+		if err != nil {
+			return Info{}, fmt.Errorf(
+				"invalid %s value %q: %w",
+				fdbv1beta2.EnvNamePortBlockStart,
+				rawStart,
+				err,
+			)
+		}
+
+		address = cluster.GetProcessGroupFullAddress(
+			&fdbv1beta2.ProcessGroupStatus{
+				PortBlock: &fdbv1beta2.PortBlock{Start: start, ServersPerPod: 1},
+			},
+			substitutions[fdbv1beta2.EnvNamePublicIP],
+			1,
+		)
+	}
+
 	return Info{
 		ID:      substitutions[fdbv1beta2.EnvNameInstanceID],
-		Address: cluster.GetFullAddress(substitutions[fdbv1beta2.EnvNamePublicIP], 1),
+		Address: address,
 		LocalityData: map[string]string{
 			fdbv1beta2.FDBLocalityZoneIDKey:  zoneID,
 			fdbv1beta2.FDBLocalityDNSNameKey: substitutions[fdbv1beta2.EnvNameDNSName],

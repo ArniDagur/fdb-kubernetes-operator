@@ -38,6 +38,9 @@ type ProcessGroupStatusApplyConfiguration struct {
 	// operator doesn't remove the process group or change its address, so that the process can forward clients to
 	// the new coordinators.
 	ForwardingCoordinatorSince *v1.Time `json:"forwardingCoordinatorSince,omitempty"`
+	// PortBlock is the block of ports used by this process group's pod.
+	// Unset if the process group's pod uses the default ports.
+	PortBlock *PortBlockApplyConfiguration `json:"portBlock,omitempty"`
 }
 
 // ProcessGroupStatusApplyConfiguration constructs a declarative configuration of the ProcessGroupStatus type for use with
@@ -130,5 +133,13 @@ func (b *ProcessGroupStatusApplyConfiguration) WithMachine(value apiv1beta2.Mach
 // If called multiple times, the ForwardingCoordinatorSince field is set to the value of the last call.
 func (b *ProcessGroupStatusApplyConfiguration) WithForwardingCoordinatorSince(value v1.Time) *ProcessGroupStatusApplyConfiguration {
 	b.ForwardingCoordinatorSince = &value
+	return b
+}
+
+// WithPortBlock sets the PortBlock field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PortBlock field is set to the value of the last call.
+func (b *ProcessGroupStatusApplyConfiguration) WithPortBlock(value *PortBlockApplyConfiguration) *ProcessGroupStatusApplyConfiguration {
+	b.PortBlock = value
 	return b
 }

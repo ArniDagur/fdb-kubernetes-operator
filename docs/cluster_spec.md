@@ -25,6 +25,8 @@ This Document documents the types introduced by the FoundationDB Operator to be 
 * [LockSystemStatus](#locksystemstatus)
 * [MaintenanceModeInfo](#maintenancemodeinfo)
 * [MaintenanceModeOptions](#maintenancemodeoptions)
+* [PortBlock](#portblock)
+* [PortBlocksConfig](#portblocksconfig)
 * [ProcessGroupCondition](#processgroupcondition)
 * [ProcessGroupStatus](#processgroupstatus)
 * [ProcessSettings](#processsettings)
@@ -406,6 +408,28 @@ PodUpdateStrategy defines how Pod spec changes should be applied.
 
 [Back to TOC](#table-of-contents)
 
+## PortBlock
+
+PortBlock defines a block of consecutive ports used by one pod.
+
+| Field | Description | Scheme | Required |
+| ----- | ----------- | ------ | -------- |
+| start | Start is the first port of the block. | int | true |
+| serversPerPod | ServersPerPod is the number of fdbserver processes the block holds. The block has 2 * ServersPerPod + 1 ports: a TLS and a non-TLS port per process, and the metrics port. | int | true |
+
+[Back to TOC](#table-of-contents)
+
+## PortBlocksConfig
+
+PortBlocksConfig defines the port range that the operator assigns port blocks from.
+
+| Field | Description | Scheme | Required |
+| ----- | ----------- | ------ | -------- |
+| portRangeStart | PortRangeStart defines the first port of the range the operator assigns port blocks from. | int | true |
+| portRangeEnd | PortRangeEnd defines the last port (inclusive) of the range the operator assigns port blocks from. | int | true |
+
+[Back to TOC](#table-of-contents)
+
 ## ProcessGroupCondition
 
 ProcessGroupCondition represents a degraded condition that a process group is in.
@@ -445,6 +469,7 @@ ProcessGroupStatus represents the status of a ProcessGroup.
 | faultDomain | FaultDomain represents the last seen fault domain from the cluster status. This can be used if a Pod or process is not running and would be missing in the cluster status. | [FaultDomain](#faultdomain) | false |
 | machine | Machine represents the last seen machine from the cluster status. This can be used if a Pod or process is not running and would be missing in the cluster status. The information is gathered from the locality information. | [Machine](#machine) | false |
 | forwardingCoordinatorSince | ForwardingCoordinatorSince is the time when this process group stopped being a coordinator while its process was still running. Until spec.automationOptions.coordinatorForwardingGracePeriodSeconds have passed, the operator doesn't remove the process group or change its address, so that the process can forward clients to the new coordinators. | *metav1.Time | false |
+| portBlock | PortBlock is the block of ports used by this process group's pod. Unset if the process group's pod uses the default ports. | *[PortBlock](#portblock) | false |
 
 [Back to TOC](#table-of-contents)
 
@@ -489,6 +514,7 @@ RoutingConfig allows configuring routing to our pods, and services that sit in f
 | useDNSInClusterFile | UseDNSInClusterFile determines whether to use DNS names rather than IP addresses to identify coordinators in the cluster file. This requires FoundationDB 7.0+. | *bool | false |
 | defineDNSLocalityFields | DefineDNSLocalityFields determines whether to define pod DNS names on pod specs and provide them in the locality arguments to fdbserver.  This is ignored if UseDNSInCluster is true. | *bool | false |
 | dnsDomain | DNSDomain defines the cluster domain used in a DNS name generated for a service. The default is `cluster.local`. | *string | false |
+| portBlocks | PortBlocks makes the operator assign every pod a unique block of ports from the port range, so that multiple pods can share an IP, for example with the hostNetwork public IP source. | *[PortBlocksConfig](#portblocksconfig) | false |
 
 [Back to TOC](#table-of-contents)
 

@@ -599,6 +599,7 @@ func (r *FoundationDBClusterReconciler) updatePodDynamicConf(
 			serversPerPod,
 			imageType,
 			currentPodIPFamily,
+			internal.HasPortBlock(pod),
 		)
 		if err != nil {
 			return false, err

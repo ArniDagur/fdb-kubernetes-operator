@@ -4606,6 +4606,20 @@ spec:
                     type: boolean
                   podIPFamily:
                     type: integer
+                  portBlocks:
+                    properties:
+                      portRangeEnd:
+                        maximum: 65535
+                        minimum: 1026
+                        type: integer
+                      portRangeStart:
+                        maximum: 65533
+                        minimum: 1024
+                        type: integer
+                    required:
+                    - portRangeEnd
+                    - portRangeStart
+                    type: object
                   publicIPSource:
                     type: string
                   useDNSInClusterFile:
@@ -4907,6 +4921,16 @@ spec:
                     machine:
                       maxLength: 512
                       type: string
+                    portBlock:
+                      properties:
+                        serversPerPod:
+                          type: integer
+                        start:
+                          type: integer
+                      required:
+                      - serversPerPod
+                      - start
+                      type: object
                     processClass:
                       type: string
                     processGroupConditions:

@@ -86,13 +86,15 @@ func FilterIgnoredProcessGroups(
 			continue
 		}
 
-		ignoredAddresses[process.Address.MachineAddress()] = fdbv1beta2.None{}
+		// Several process groups can share an IP when they use port blocks, so the addresses are compared by
+		// IP:port.
+		ignoredAddresses[process.Address.StringWithoutFlags()] = fdbv1beta2.None{}
 	}
 
 	filteredAddresses := make([]fdbv1beta2.ProcessAddress, 0, len(addresses)-len(ignoredAddresses))
 	removedAddresses := false
 	for _, address := range addresses {
-		if _, ok := ignoredAddresses[address.MachineAddress()]; ok {
+		if _, ok := ignoredAddresses[address.StringWithoutFlags()]; ok {
 			removedAddresses = true
 			continue
 		}

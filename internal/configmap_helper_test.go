@@ -109,6 +109,7 @@ var _ = Describe("configmap_helper", func() {
 					1,
 					fdbv1beta2.ImageTypeUnified,
 					nil,
+					false,
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(config).To(Equal(expectedConfig))
@@ -209,6 +210,7 @@ var _ = Describe("configmap_helper", func() {
 						1,
 						fdbv1beta2.ImageTypeUnified,
 						nil,
+						false,
 					)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(config).To(Equal(expectedConfig))
@@ -224,6 +226,7 @@ var _ = Describe("configmap_helper", func() {
 						2,
 						fdbv1beta2.ImageTypeUnified,
 						nil,
+						false,
 					)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(config).To(Equal(expectedConfig))
@@ -282,6 +285,7 @@ var _ = Describe("configmap_helper", func() {
 						1,
 						fdbv1beta2.ImageTypeUnified,
 						nil,
+						false,
 					)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(config).To(Equal(expectedConfig))
@@ -297,6 +301,7 @@ var _ = Describe("configmap_helper", func() {
 						2,
 						fdbv1beta2.ImageTypeUnified,
 						nil,
+						false,
 					)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(config).To(Equal(expectedConfig))

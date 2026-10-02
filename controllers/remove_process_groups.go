@@ -24,7 +24,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"strconv"
 	"time"
 
@@ -559,23 +558,18 @@ func getProcessesToInclude(
 				}
 			}
 
-			for _, pAddr := range processGroup.Addresses {
+			// Process groups with a port block share the IP of their node, so they are identified by IP:port.
+			for _, pAddr := range cluster.GetProcessGroupNetworkAddresses(processGroup) {
 				// Ensure we include the process address if the removed process group is a log process as we are always
 				// excluding the log process with locality and IP address when validating that the log process was
 				// fully excluded. Otherwise, we might leave the IP address in the excluded list.
 				if foundInExcludedServerList && processGroup.ProcessClass.IsLogProcess() {
-					fdbProcessesToInclude = append(
-						fdbProcessesToInclude,
-						fdbv1beta2.ProcessAddress{IPAddress: net.ParseIP(pAddr)},
-					)
+					fdbProcessesToInclude = append(fdbProcessesToInclude, pAddr)
 					continue
 				}
 
-				if _, ok := excludedServersMap[pAddr]; ok {
-					fdbProcessesToInclude = append(
-						fdbProcessesToInclude,
-						fdbv1beta2.ProcessAddress{IPAddress: net.ParseIP(pAddr)},
-					)
+				if _, ok := excludedServersMap[pAddr.String()]; ok {
+					fdbProcessesToInclude = append(fdbProcessesToInclude, pAddr)
 					foundInExcludedServerList = true
 					if _, ok := readyForInclusion[processGroup.ProcessGroupID]; !ok {
 						readyForInclusionUpdates[processGroup.ProcessGroupID] = fdbv1beta2.UpdateActionAdd
@@ -653,14 +647,15 @@ func getProcessesToInclude(
 // of the addresses appear in the map, which is the normal case for groups that
 // getAddressesToValidateBeforeRemoval already trusts as excluded.
 func processGroupAddressesRemaining(
+	cluster *fdbv1beta2.FoundationDBCluster,
 	processGroup *fdbv1beta2.ProcessGroupStatus,
 	remainingMap map[string]bool,
 ) bool {
 	if remaining, ok := remainingMap[processGroup.GetExclusionString()]; ok && remaining {
 		return true
 	}
-	for _, addr := range processGroup.Addresses {
-		if remaining, ok := remainingMap[addr]; ok && remaining {
+	for _, addr := range cluster.GetProcessGroupNetworkAddresses(processGroup) {
+		if remaining, ok := remainingMap[addr.String()]; ok && remaining {
 			return true
 		}
 	}
@@ -737,7 +732,7 @@ func (r *FoundationDBClusterReconciler) getProcessGroupsToRemove(
 		// exclude check could not confirm the process is fully excluded — so trust the live signal over the
 		// possibly-stale ExclusionTimestamp. See https://github.com/FoundationDB/fdb-kubernetes-operator/issues/1912.
 		if processGroup.IsExcluded() {
-			if processGroupAddressesRemaining(processGroup, remainingMap) {
+			if processGroupAddressesRemaining(cluster, processGroup, remainingMap) {
 				logger.Info(
 					"ExclusionTimestamp set but live exclude reports addresses still remaining; not removing",
 					"processGroupID",

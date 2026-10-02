@@ -104,6 +104,7 @@ func (updatePodConfig) reconcile(
 			processClass,
 			internal.GetImageType(pod),
 			serverPerPod,
+			internal.HasPortBlock(pod),
 		)
 		if err != nil {
 			curLogger.Error(err, "Error when receiving dynamic ConfigMap hash")

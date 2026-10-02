@@ -84,6 +84,10 @@ const (
 	// EnvNamePodIP will be used to set the listen address of the started fdbserver process
 	EnvNamePodIP = "FDB_POD_IP"
 
+	// EnvNamePortBlockStart holds the first port of a pod's port block. The fdb-kubernetes-monitor
+	// computes the fdbserver ports from it, and the operator reads it to know how a pod was created.
+	EnvNamePortBlockStart = "FDB_PORT_BLOCK_START"
+
 	// EnvNamePodName tells the unified FDB kubernetes monitor the name of its pod
 	EnvNamePodName = "FDB_POD_NAME"
 

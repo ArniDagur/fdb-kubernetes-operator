@@ -29,8 +29,9 @@ import (
 )
 
 // ProcessGroupAddressWillChange returns true if the address that the processes of the process group's current Pod
-// listen on will not survive the pending changes: the process group will be removed, its public IP source changes,
-// or its Pod will be recreated while the cluster file uses IP addresses (a recreated Pod gets a new IP).
+// listen on will not survive the pending changes: the process group will be removed, its Pod will gain or lose a
+// port block (so its ports change), its public IP source changes, or its Pod will be recreated while the cluster file
+// uses IP addresses (a recreated Pod gets a new IP).
 func ProcessGroupAddressWillChange(
 	cluster *fdbv1beta2.FoundationDBCluster,
 	processGroup *fdbv1beta2.ProcessGroupStatus,
@@ -42,6 +43,11 @@ func ProcessGroupAddressWillChange(
 
 	if pod == nil {
 		return false
+	}
+
+	// The port changes too, so this applies even with DNS names in the cluster file.
+	if HasPortBlock(pod) != cluster.UsePortBlocks() {
+		return true
 	}
 
 	publicIPSource, err := GetPublicIPSource(pod)

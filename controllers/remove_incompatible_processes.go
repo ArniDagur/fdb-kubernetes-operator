@@ -103,6 +103,8 @@ func processIncompatibleProcesses(
 	)
 
 	incompatibleConnections := parseIncompatibleConnections(logger, status, cluster)
+	incompatibleIPs := getIncompatibleIPs(status)
+	processGroupsInStatus := getProcessGroupIDsInStatus(cluster, status)
 	incompatiblePods := make([]*corev1.Pod, 0, len(incompatibleConnections))
 	for _, processGroup := range cluster.Status.ProcessGroups {
 		pod, err := r.PodLifecycleManager.GetPod(ctx, r, cluster, processGroup.GetPodName(cluster))
@@ -119,7 +121,16 @@ func processIncompatibleProcesses(
 			continue
 		}
 
-		if isIncompatible(incompatibleConnections, processGroup) {
+		incompatible := isIncompatible(incompatibleConnections, processGroup)
+		// Process groups with a port block share the IP of their node with other process groups, so the IP alone
+		// doesn't tell which of them is incompatible. Such a process group is incompatible if its IP has an
+		// incompatible connection and none of its processes is reported in the machine-readable status.
+		if processGroup.PortBlock != nil {
+			_, inStatus := processGroupsInStatus[processGroup.ProcessGroupID]
+			incompatible = !inStatus && isIncompatible(incompatibleIPs, processGroup)
+		}
+
+		if incompatible {
 			logger.Info(
 				"recreate Pod for process group with incompatible version",
 				"processGroupID",
@@ -170,6 +181,39 @@ func parseIncompatibleConnections(
 		}
 
 		result[address.MachineAddress()] = fdbv1beta2.None{}
+	}
+
+	return result
+}
+
+// getIncompatibleIPs returns the IPs of all incompatible connections.
+func getIncompatibleIPs(status *fdbv1beta2.FoundationDBStatus) map[string]fdbv1beta2.None {
+	result := make(map[string]fdbv1beta2.None, len(status.Cluster.IncompatibleConnections))
+	for _, incompatibleAddress := range status.Cluster.IncompatibleConnections {
+		address, err := fdbv1beta2.ParseProcessAddress(incompatibleAddress)
+		if err != nil {
+			continue
+		}
+
+		result[address.MachineAddress()] = fdbv1beta2.None{}
+	}
+
+	return result
+}
+
+// getProcessGroupIDsInStatus returns the process group IDs of all processes of this cluster in the
+// machine-readable status.
+func getProcessGroupIDsInStatus(
+	cluster *fdbv1beta2.FoundationDBCluster,
+	status *fdbv1beta2.FoundationDBStatus,
+) map[fdbv1beta2.ProcessGroupID]fdbv1beta2.None {
+	result := make(map[fdbv1beta2.ProcessGroupID]fdbv1beta2.None, len(status.Cluster.Processes))
+	for _, process := range status.Cluster.Processes {
+		if !cluster.ProcessSharesDC(process) {
+			continue
+		}
+
+		result[fdbv1beta2.ProcessGroupID(process.Locality[fdbv1beta2.FDBLocalityInstanceIDKey])] = fdbv1beta2.None{}
 	}
 
 	return result

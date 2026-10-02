@@ -82,6 +82,10 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1beta2.MaintenanceModeInfoApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("MaintenanceModeOptions"):
 		return &apiv1beta2.MaintenanceModeOptionsApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("PortBlock"):
+		return &apiv1beta2.PortBlockApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("PortBlocksConfig"):
+		return &apiv1beta2.PortBlocksConfigApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("ProcessCounts"):
 		return &apiv1beta2.ProcessCountsApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("ProcessGroupCondition"):

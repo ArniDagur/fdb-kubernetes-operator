@@ -225,7 +225,7 @@ func configureContainersForUnifiedImages(
 	}
 	var mainContainerEnv []corev1.EnvVar
 
-	serversPerPod := cluster.GetDesiredServersPerPod(processGroup.ProcessClass)
+	serversPerPod := getServersPerPod(cluster, processGroup)
 	if serversPerPod > 1 {
 		desiredServersPerPod := strconv.Itoa(serversPerPod)
 		mainContainer.Args = append(mainContainer.Args, "--process-count", desiredServersPerPod)
@@ -406,7 +406,8 @@ func configureVolumesForContainers(
 	monitorConfKey := GetConfigMapMonitorConfEntry(
 		processGroup.ProcessClass,
 		cluster.DesiredImageType(),
-		cluster.GetDesiredServersPerPod(processGroup.ProcessClass),
+		getServersPerPod(cluster, processGroup),
+		useUnifiedImage && cluster.UsePortBlocks(),
 	)
 
 	var monitorConfFile string
@@ -666,6 +667,12 @@ func GetPodSpec(
 		replaceContainers(podSpec.InitContainers, initContainer)
 	}
 
+	// A spec without a block is only used to detect that the pod must be recreated. The pod itself is only created
+	// after the block was assigned.
+	if useUnifiedImage && cluster.UsePortBlocks() && processGroup.PortBlock != nil {
+		configurePortBlock(mainContainer, processGroup.PortBlock, cluster.UseHostNetwork())
+	}
+
 	if cluster.UseHostNetwork() {
 		podSpec.HostNetwork = true
 		if podSpec.DNSPolicy == "" {
@@ -683,6 +690,92 @@ func GetPodSpec(
 	}
 
 	return podSpec, nil
+}
+
+// getServersPerPod returns the number of servers the process group's pod runs. A pod with a port block always runs the
+// number of servers of its block, so the block never has to grow. Changing the number of servers replaces the process
+// group instead.
+func getServersPerPod(
+	cluster *fdbv1beta2.FoundationDBCluster,
+	processGroup *fdbv1beta2.ProcessGroupStatus,
+) int {
+	if cluster.UsePortBlocks() && processGroup.PortBlock != nil {
+		return processGroup.PortBlock.ServersPerPod
+	}
+
+	return cluster.GetDesiredServersPerPod(processGroup.ProcessClass)
+}
+
+// configurePortBlock makes the main container use the ports of its port block. Pods that advertise the node IP
+// declare them as host ports, so the scheduler keeps pods that use the same ports on that IP apart.
+func configurePortBlock(
+	mainContainer *corev1.Container,
+	block *fdbv1beta2.PortBlock,
+	declareHostPorts bool,
+) {
+	extendEnv(mainContainer, corev1.EnvVar{
+		Name:  fdbv1beta2.EnvNamePortBlockStart,
+		Value: strconv.Itoa(block.Start),
+	})
+	mainContainer.Args = append(
+		mainContainer.Args,
+		"--listen-address",
+		fmt.Sprintf(":%d", block.MetricsPort()),
+	)
+
+	blockPorts := make([]corev1.ContainerPort, 0, block.Size())
+	for processNumber := 1; processNumber <= block.ServersPerPod; processNumber++ {
+		tlsName, nonTLSName := "tls", "non-tls"
+		if processNumber > 1 {
+			tlsName = fmt.Sprintf("tls-%d", processNumber)
+			nonTLSName = fmt.Sprintf("non-tls-%d", processNumber)
+		}
+
+		tlsPort := int32(block.ProcessPort(processNumber, true))
+		nonTLSPort := int32(block.ProcessPort(processNumber, false))
+		blockPorts = append(
+			blockPorts,
+			corev1.ContainerPort{
+				Name:          tlsName,
+				ContainerPort: tlsPort,
+				Protocol:      corev1.ProtocolTCP,
+			},
+			corev1.ContainerPort{
+				Name:          nonTLSName,
+				ContainerPort: nonTLSPort,
+				Protocol:      corev1.ProtocolTCP,
+			},
+		)
+	}
+
+	blockPorts = append(blockPorts, corev1.ContainerPort{
+		Name:          "metrics",
+		ContainerPort: int32(block.MetricsPort()),
+		Protocol:      corev1.ProtocolTCP,
+	})
+
+	if declareHostPorts {
+		for index := range blockPorts {
+			blockPorts[index].HostPort = blockPorts[index].ContainerPort
+		}
+	}
+
+	// Ports of the pod template with the same names are replaced by the ports of the block.
+	blockPortNames := make(map[string]fdbv1beta2.None, len(blockPorts))
+	for _, port := range blockPorts {
+		blockPortNames[port.Name] = fdbv1beta2.None{}
+	}
+
+	ports := make([]corev1.ContainerPort, 0, len(mainContainer.Ports)+len(blockPorts))
+	for _, port := range mainContainer.Ports {
+		if _, ok := blockPortNames[port.Name]; ok {
+			continue
+		}
+
+		ports = append(ports, port)
+	}
+
+	mainContainer.Ports = append(ports, blockPorts...)
 }
 
 // configureSidecarContainerForCluster sets up a sidecar container for a sidecar
