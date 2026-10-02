@@ -18,9 +18,7 @@ type RoutingConfigApplyConfiguration struct {
 	// PublicIPSource specifies what source a process should use to get its
 	// public IPs.
 	//
-	// This supports the values `pod`, `service`, and `hostNetwork`. With `hostNetwork`, the pods run in the host
-	// network namespace and the processes use the node IP and the default ports, so no two pods may share a node.
-	// Changing the source replaces process groups.
+	// This supports the values `pod`, `service`, and `hostNetwork`.
 	PublicIPSource *apiv1beta2.PublicIPSource `json:"publicIPSource,omitempty"`
 	// PodIPFamily tells the pod which family of IP addresses to use.
 	// You can use 4 to represent IPv4, and 6 to represent IPv6.
