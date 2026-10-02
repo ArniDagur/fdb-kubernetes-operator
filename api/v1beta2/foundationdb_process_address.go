@@ -301,14 +301,6 @@ func (address ProcessAddress) StringWithoutFlags() string {
 // DefaultProcessPortStart is the TLS port of the first process in a pod that does not use a port block.
 const DefaultProcessPortStart = 4500
 
-const (
-	// DefaultPortBlockRangeStart is the first port of the default range that port blocks are assigned from.
-	DefaultPortBlockRangeStart = 20000
-
-	// DefaultPortBlockRangeEnd is the last port of the default range that port blocks are assigned from.
-	DefaultPortBlockRangeEnd = 29999
-)
-
 // GetProcessPort returns the expected port for a given process number
 // and the tls setting.
 func GetProcessPort(processNumber int, tls bool) int {

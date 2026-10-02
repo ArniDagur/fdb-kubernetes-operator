@@ -8,11 +8,8 @@ package v1beta2
 // PortBlocksConfig defines the port range that the operator assigns port blocks from.
 type PortBlocksConfigApplyConfiguration struct {
 	// PortRangeStart defines the first port of the range the operator assigns port blocks from.
-	// Defaults to 20000.
 	PortRangeStart *int `json:"portRangeStart,omitempty"`
 	// PortRangeEnd defines the last port (inclusive) of the range the operator assigns port blocks from.
-	// Defaults to 29999, which keeps the default range below the Kubernetes NodePort range (30000-32767) and the
-	// Linux ephemeral port range (32768 and above).
 	PortRangeEnd *int `json:"portRangeEnd,omitempty"`
 }
 

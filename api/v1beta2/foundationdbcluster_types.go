@@ -2533,19 +2533,16 @@ type RoutingConfig struct {
 // PortBlocksConfig defines the port range that the operator assigns port blocks from.
 type PortBlocksConfig struct {
 	// PortRangeStart defines the first port of the range the operator assigns port blocks from.
-	// Defaults to 20000.
+	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Minimum=1024
 	// +kubebuilder:validation:Maximum=65533
-	// +optional
-	PortRangeStart *int `json:"portRangeStart,omitempty"`
+	PortRangeStart int `json:"portRangeStart"`
 
 	// PortRangeEnd defines the last port (inclusive) of the range the operator assigns port blocks from.
-	// Defaults to 29999, which keeps the default range below the Kubernetes NodePort range (30000-32767) and the
-	// Linux ephemeral port range (32768 and above).
+	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Minimum=1026
 	// +kubebuilder:validation:Maximum=65535
-	// +optional
-	PortRangeEnd *int `json:"portRangeEnd,omitempty"`
+	PortRangeEnd int `json:"portRangeEnd"`
 }
 
 // PortBlock defines a block of consecutive ports used by one pod.
@@ -2908,11 +2905,14 @@ func (cluster *FoundationDBCluster) UsePortBlocks() bool {
 	return cluster.Spec.Routing.PortBlocks != nil
 }
 
-// GetPortBlockRange returns the first and the last port (inclusive) that port blocks are assigned from.
+// GetPortBlockRange returns the first and the last port (inclusive) that port blocks are assigned from. Both are 0
+// if port blocks are not used.
 func (cluster *FoundationDBCluster) GetPortBlockRange() (int, int) {
-	portBlocks := ptr.Deref(cluster.Spec.Routing.PortBlocks, PortBlocksConfig{})
-	return ptr.Deref(portBlocks.PortRangeStart, DefaultPortBlockRangeStart),
-		ptr.Deref(portBlocks.PortRangeEnd, DefaultPortBlockRangeEnd)
+	if cluster.Spec.Routing.PortBlocks == nil {
+		return 0, 0
+	}
+
+	return cluster.Spec.Routing.PortBlocks.PortRangeStart, cluster.Spec.Routing.PortBlocks.PortRangeEnd
 }
 
 // HasPortBlocks returns true if at least one process group has a port block.

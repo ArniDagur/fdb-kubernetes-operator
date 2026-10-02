@@ -4616,6 +4616,9 @@ spec:
                         maximum: 65533
                         minimum: 1024
                         type: integer
+                    required:
+                    - portRangeEnd
+                    - portRangeStart
                     type: object
                   publicIPSource:
                     type: string

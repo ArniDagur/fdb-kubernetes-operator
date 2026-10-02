@@ -147,7 +147,10 @@ var _ = Describe("port blocks", func() {
 		cluster.Status.ConnectionString = "operator-test:asdfasf@127.0.0.1:4501"
 		cluster.Spec.StorageServersPerPod = 2
 		cluster.Spec.Routing.PublicIPSource = ptr.To(fdbv1beta2.PublicIPSourceHostNetwork)
-		cluster.Spec.Routing.PortBlocks = &fdbv1beta2.PortBlocksConfig{}
+		cluster.Spec.Routing.PortBlocks = &fdbv1beta2.PortBlocksConfig{
+			PortRangeStart: 20000,
+			PortRangeEnd:   20999,
+		}
 		Expect(NormalizeClusterSpec(cluster, DeprecationOptions{})).To(Succeed())
 	})
 

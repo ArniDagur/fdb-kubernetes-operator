@@ -425,8 +425,8 @@ PortBlocksConfig defines the port range that the operator assigns port blocks fr
 
 | Field | Description | Scheme | Required |
 | ----- | ----------- | ------ | -------- |
-| portRangeStart | PortRangeStart defines the first port of the range the operator assigns port blocks from. Defaults to 20000. | *int | false |
-| portRangeEnd | PortRangeEnd defines the last port (inclusive) of the range the operator assigns port blocks from. Defaults to 29999, which keeps the default range below the Kubernetes NodePort range (30000-32767) and the Linux ephemeral port range (32768 and above). | *int | false |
+| portRangeStart | PortRangeStart defines the first port of the range the operator assigns port blocks from. | int | true |
+| portRangeEnd | PortRangeEnd defines the last port (inclusive) of the range the operator assigns port blocks from. | int | true |
 
 [Back to TOC](#table-of-contents)
 

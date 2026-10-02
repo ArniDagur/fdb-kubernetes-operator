@@ -159,13 +159,16 @@ func newHostNetworkCluster(hostNetwork bool) *fdbv1beta2.FoundationDBCluster {
 	return cluster
 }
 
-// setHostNetwork turns host networking with port blocks from the default range on or off.
+// setHostNetwork turns host networking with port blocks from 20000 to 20999 on or off.
 func setHostNetwork(cluster *fdbv1beta2.FoundationDBCluster, enabled bool) {
 	cluster.Spec.Routing.PublicIPSource = nil
 	cluster.Spec.Routing.PortBlocks = nil
 	if enabled {
 		cluster.Spec.Routing.PublicIPSource = ptr.To(fdbv1beta2.PublicIPSourceHostNetwork)
-		cluster.Spec.Routing.PortBlocks = &fdbv1beta2.PortBlocksConfig{}
+		cluster.Spec.Routing.PortBlocks = &fdbv1beta2.PortBlocksConfig{
+			PortRangeStart: 20000,
+			PortRangeEnd:   20999,
+		}
 	}
 }
 
@@ -418,7 +421,8 @@ var _ = Describe("host networking with port blocks", func() {
 					lastPort = max(lastPort, processGroup.PortBlock.End())
 				}
 				cluster.Spec.Routing.PortBlocks = &fdbv1beta2.PortBlocksConfig{
-					PortRangeEnd: ptr.To(lastPort),
+					PortRangeStart: 20000,
+					PortRangeEnd:   lastPort,
 				}
 
 				newProcessGroup = fdbv1beta2.NewProcessGroupStatus(

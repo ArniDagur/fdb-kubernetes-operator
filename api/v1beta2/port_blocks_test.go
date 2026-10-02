@@ -99,8 +99,8 @@ var _ = Describe("[api] port blocks", func() {
 					Routing: RoutingConfig{
 						PublicIPSource: ptr.To(PublicIPSourceHostNetwork),
 						PortBlocks: &PortBlocksConfig{
-							PortRangeStart: ptr.To(20000),
-							PortRangeEnd:   ptr.To(29999),
+							PortRangeStart: 20000,
+							PortRangeEnd:   29999,
 						},
 					},
 				},
@@ -108,12 +108,8 @@ var _ = Describe("[api] port blocks", func() {
 			mods = &AllowedPodModifications{}
 		})
 
-		It("should accept each setting without the other, and default the range", func() {
+		It("should accept each setting without the other", func() {
 			Expect(cluster.Validate(mods)).To(Succeed())
-			cluster.Spec.Routing.PortBlocks = &PortBlocksConfig{}
-			Expect(cluster.Validate(mods)).To(Succeed())
-			start, end := cluster.GetPortBlockRange()
-			Expect([]int{start, end}).To(Equal([]int{20000, 29999}))
 			cluster.Spec.Routing.PublicIPSource = ptr.To(PublicIPSourcePod)
 			Expect(cluster.Validate(mods)).To(Succeed())
 			cluster.Spec.Routing.PublicIPSource = ptr.To(PublicIPSourceHostNetwork)
@@ -128,18 +124,16 @@ var _ = Describe("[api] port blocks", func() {
 				Expect(cluster.Validate(mods)).To(MatchError(ContainSubstring(expected)))
 			},
 			Entry(
-				"a range start above the default range end",
+				"a port range that ends before it starts",
 				func(cluster *FoundationDBCluster, _ *AllowedPodModifications) {
-					cluster.Spec.Routing.PortBlocks = &PortBlocksConfig{
-						PortRangeStart: ptr.To(35000),
-					}
+					cluster.Spec.Routing.PortBlocks.PortRangeEnd = 19999
 				},
-				"spec.routing.portBlocks.portRangeEnd (29999) must be greater than spec.routing.portBlocks.portRangeStart (35000)",
+				"spec.routing.portBlocks.portRangeEnd (19999) must be greater than spec.routing.portBlocks.portRangeStart (20000)",
 			),
 			Entry("a port range too small for the desired process groups",
 				func(cluster *FoundationDBCluster, _ *AllowedPodModifications) {
 					// A single process group already needs 3 ports.
-					cluster.Spec.Routing.PortBlocks.PortRangeEnd = ptr.To(20001)
+					cluster.Spec.Routing.PortBlocks.PortRangeEnd = 20001
 				},
 				"the port block range 20000-20001 has 2 ports",
 			),
