@@ -672,10 +672,16 @@ func validateProcessGroups(
 			continue
 		}
 		processGroup.UpdateCondition(fdbv1beta2.MissingPod, false)
+		keepOldAddresses := processGroup.IsMarkedForRemoval() || !status.Health.Available
 		processGroup.AddAddresses(
 			podmanager.GetPublicIPs(pod, logger),
-			processGroup.IsMarkedForRemoval() || !status.Health.Available,
+			keepOldAddresses,
 		)
+
+		err := updatePortBlock(cluster, processGroup, pod, keepOldAddresses)
+		if err != nil {
+			return err
+		}
 
 		// This handles the case where the Pod has a DeletionTimestamp and should be deleted.
 		if !pod.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -746,6 +752,7 @@ func validateProcessGroups(
 			processGroup.ProcessClass,
 			imageType,
 			processCount,
+			internal.HasPortBlock(pod),
 		)
 		if err != nil {
 			return err
@@ -764,6 +771,33 @@ func validateProcessGroups(
 		if err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+// updatePortBlock records the port block of the process group's pod in the process group status. The block is only
+// cleared once the pod is known to use the default ports, port blocks are disabled, and the addresses of the process
+// group were replaced with the addresses of this pod. That way a process group without a block never keeps the IP of a
+// node in its addresses, and a stale pod in the cache can't free a block that a new pod already uses.
+func updatePortBlock(
+	cluster *fdbv1beta2.FoundationDBCluster,
+	processGroup *fdbv1beta2.ProcessGroupStatus,
+	pod *corev1.Pod,
+	keepOldAddresses bool,
+) error {
+	block, err := internal.GetPortBlock(pod, processGroup.ProcessClass)
+	if err != nil {
+		return err
+	}
+
+	if block != nil {
+		processGroup.PortBlock = block
+		return nil
+	}
+
+	if !cluster.UsePortBlocks() && !keepOldAddresses {
+		processGroup.PortBlock = nil
 	}
 
 	return nil

@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
+	"net"
 	"regexp"
 	"slices"
 	"strconv"
@@ -409,6 +410,10 @@ type ProcessGroupStatus struct {
 	// the new coordinators.
 	// +optional
 	ForwardingCoordinatorSince *metav1.Time `json:"forwardingCoordinatorSince,omitempty"`
+	// PortBlock is the block of ports used by this process group's pod.
+	// Unset if the process group's pod uses the default ports.
+	// +optional
+	PortBlock *PortBlock `json:"portBlock,omitempty"`
 }
 
 // String returns string representation.
@@ -2518,6 +2523,65 @@ type RoutingConfig struct {
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
 	DNSDomain *string `json:"dnsDomain,omitempty"`
+
+	// PortBlocks makes the operator assign every pod a unique block of ports from the port range, so that
+	// multiple pods can share an IP, for example with the hostNetwork public IP source.
+	// +optional
+	PortBlocks *PortBlocksConfig `json:"portBlocks,omitempty"`
+}
+
+// PortBlocksConfig defines the port range that the operator assigns port blocks from.
+type PortBlocksConfig struct {
+	// PortRangeStart defines the first port of the range the operator assigns port blocks from.
+	// Defaults to 20000.
+	// +kubebuilder:validation:Minimum=1024
+	// +kubebuilder:validation:Maximum=65533
+	// +optional
+	PortRangeStart *int `json:"portRangeStart,omitempty"`
+
+	// PortRangeEnd defines the last port (inclusive) of the range the operator assigns port blocks from.
+	// Defaults to 29999, which keeps the default range below the Kubernetes NodePort range (30000-32767) and the
+	// Linux ephemeral port range (32768 and above).
+	// +kubebuilder:validation:Minimum=1026
+	// +kubebuilder:validation:Maximum=65535
+	// +optional
+	PortRangeEnd *int `json:"portRangeEnd,omitempty"`
+}
+
+// PortBlock defines a block of consecutive ports used by one pod.
+type PortBlock struct {
+	// Start is the first port of the block.
+	Start int `json:"start"`
+
+	// ServersPerPod is the number of fdbserver processes the block holds. The block has
+	// 2 * ServersPerPod + 1 ports: a TLS and a non-TLS port per process, and the metrics port.
+	ServersPerPod int `json:"serversPerPod"`
+}
+
+// Size returns the number of ports in the block.
+func (block PortBlock) Size() int {
+	return PortBlockSize(block.ServersPerPod)
+}
+
+// End returns the last port (inclusive) of the block.
+func (block PortBlock) End() int {
+	return block.Start + block.Size() - 1
+}
+
+// ProcessPort returns the port of the given process number (1-based) in the block: the default layout of
+// GetProcessPort, shifted to the start of the block.
+func (block PortBlock) ProcessPort(processNumber int, tls bool) int {
+	return block.Start - DefaultProcessPortStart + GetProcessPort(processNumber, tls)
+}
+
+// MetricsPort returns the port of the fdb-kubernetes-monitor metrics endpoint in the block.
+func (block PortBlock) MetricsPort() int {
+	return block.Start + 2*block.ServersPerPod
+}
+
+// PortBlockSize returns the number of ports a block needs for the given number of servers per pod.
+func PortBlockSize(serversPerPod int) int {
+	return 2*serversPerPod + 1
 }
 
 // RequiredAddressSet provides settings for which addresses we need to listen
@@ -2837,6 +2901,154 @@ func (cluster *FoundationDBCluster) NeedsHeadlessService() bool {
 // UseDNSInClusterFile determines whether we need to use DNS entries in the cluster file for this cluster.
 func (cluster *FoundationDBCluster) UseDNSInClusterFile() bool {
 	return ptr.Deref(cluster.Spec.Routing.UseDNSInClusterFile, true)
+}
+
+// UsePortBlocks returns true if the operator should assign every new pod of this cluster a port block.
+func (cluster *FoundationDBCluster) UsePortBlocks() bool {
+	return cluster.Spec.Routing.PortBlocks != nil
+}
+
+// GetPortBlockRange returns the first and the last port (inclusive) that port blocks are assigned from.
+func (cluster *FoundationDBCluster) GetPortBlockRange() (int, int) {
+	portBlocks := ptr.Deref(cluster.Spec.Routing.PortBlocks, PortBlocksConfig{})
+	return ptr.Deref(portBlocks.PortRangeStart, DefaultPortBlockRangeStart),
+		ptr.Deref(portBlocks.PortRangeEnd, DefaultPortBlockRangeEnd)
+}
+
+// HasPortBlocks returns true if at least one process group has a port block.
+func (cluster *FoundationDBCluster) HasPortBlocks() bool {
+	for _, processGroup := range cluster.Status.ProcessGroups {
+		if processGroup.PortBlock != nil {
+			return true
+		}
+	}
+
+	return false
+}
+
+// GetProcessGroupFullAddress returns the primary address of the given process of the process group. It works like
+// GetFullAddress, but uses the port block of the process group if it has one.
+func (cluster *FoundationDBCluster) GetProcessGroupFullAddress(
+	processGroup *ProcessGroupStatus,
+	address string,
+	processNumber int,
+) ProcessAddress {
+	fullAddress := cluster.GetFullAddress(address, processNumber)
+	// GetFullAddress returns an empty address if no address mode is required yet.
+	if fullAddress.Port == 0 || processGroup == nil || processGroup.PortBlock == nil {
+		return fullAddress
+	}
+
+	fullAddress.Port = processGroup.PortBlock.ProcessPort(processNumber, fullAddress.Flags["tls"])
+	return fullAddress
+}
+
+// GetProcessGroupNetworkAddresses returns the addresses that identify the processes of the process group on the
+// network. Without a port block these are the bare IPs of the process group. With a port block several process groups
+// can share an IP, so these are the IP:port addresses of every process in the block, for each required address mode.
+func (cluster *FoundationDBCluster) GetProcessGroupNetworkAddresses(
+	processGroup *ProcessGroupStatus,
+) []ProcessAddress {
+	addresses := make([]ProcessAddress, 0, len(processGroup.Addresses))
+	for _, rawAddress := range processGroup.Addresses {
+		ip := net.ParseIP(rawAddress)
+		if ip == nil {
+			continue
+		}
+
+		if processGroup.PortBlock == nil {
+			addresses = append(addresses, ProcessAddress{IPAddress: ip})
+			continue
+		}
+
+		requireTLS := cluster.Status.RequiredAddresses.TLS
+		requireNonTLS := cluster.Status.RequiredAddresses.NonTLS
+		// If the required addresses are not known yet, include both so that no process of the group is missed.
+		if !requireTLS && !requireNonTLS {
+			requireTLS, requireNonTLS = true, true
+		}
+
+		for processNumber := 1; processNumber <= processGroup.PortBlock.ServersPerPod; processNumber++ {
+			if requireTLS {
+				addresses = append(addresses, ProcessAddress{
+					IPAddress: ip,
+					Port:      processGroup.PortBlock.ProcessPort(processNumber, true),
+				})
+			}
+
+			if requireNonTLS {
+				addresses = append(addresses, ProcessAddress{
+					IPAddress: ip,
+					Port:      processGroup.PortBlock.ProcessPort(processNumber, false),
+				})
+			}
+		}
+	}
+
+	return addresses
+}
+
+// validatePortBlocks returns the validation errors for the port block settings.
+func (cluster *FoundationDBCluster) validatePortBlocks() []string {
+	if !cluster.UsePortBlocks() {
+		return nil
+	}
+
+	var validations []string
+
+	start, end := cluster.GetPortBlockRange()
+	if end <= start {
+		validations = append(validations, fmt.Sprintf(
+			"spec.routing.portBlocks.portRangeEnd (%d) must be greater than spec.routing.portBlocks.portRangeStart (%d)",
+			end,
+			start,
+		))
+	} else {
+		counts, err := cluster.GetProcessCountsWithDefaults()
+		if err != nil {
+			validations = append(validations, err.Error())
+		} else {
+			requiredPorts := 0
+			for processClass, count := range counts.Map() {
+				requiredPorts += count * PortBlockSize(
+					cluster.GetDesiredServersPerPod(processClass),
+				)
+			}
+
+			if requiredPorts > end-start+1 {
+				validations = append(validations, fmt.Sprintf(
+					"the port block range %d-%d has %d ports, but the desired process groups need %d",
+					start,
+					end,
+					end-start+1,
+					requiredPorts,
+				))
+			}
+		}
+	}
+
+	if !cluster.UseUnifiedImage() {
+		validations = append(validations, "spec.routing.portBlocks requires the unified image")
+	}
+
+	if !cluster.UseLocalitiesForExclusion() {
+		validations = append(
+			validations,
+			"spec.routing.portBlocks requires locality based exclusions",
+		)
+	}
+
+	if ptr.Deref(
+		cluster.Spec.AutomationOptions.SynchronizationMode,
+		string(SynchronizationModeLocal),
+	) != string(SynchronizationModeLocal) {
+		validations = append(
+			validations,
+			"spec.routing.portBlocks is only supported with the local synchronization mode",
+		)
+	}
+
+	return validations
 }
 
 // DefineDNSLocalityFields determines whether we need to put DNS entries in the
@@ -3480,9 +3692,23 @@ func (cluster *FoundationDBCluster) Validate(
 				),
 			)
 		}
+
+		// The operator uses this variable to know which pods it created with a port block.
+		for _, container := range settings.PodTemplate.Spec.Containers {
+			for _, env := range container.Env {
+				if env.Name == EnvNamePortBlockStart {
+					validations = append(validations, fmt.Sprintf(
+						"Forbidden PodSpec for %s: the environment variable %s is managed by the operator",
+						processClass,
+						EnvNamePortBlockStart,
+					))
+				}
+			}
+		}
 	}
 
 	validations = append(validations, cluster.validateHostNetwork(allowedPodModifications)...)
+	validations = append(validations, cluster.validatePortBlocks()...)
 
 	if len(validations) == 0 {
 		return nil

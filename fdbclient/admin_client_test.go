@@ -769,6 +769,7 @@ protocol fdb00b071010000`,
 	When("excluding a set of processes", func() {
 		var mockRunner *mockCommandRunner
 		var useNonBlockingExcludes bool
+		var addresses []fdbv1beta2.ProcessAddress
 
 		JustBeforeEach(func() {
 			interactionMode := fdbv1beta2.DatabaseInteractionModeFdbcli
@@ -788,10 +789,7 @@ protocol fdb00b071010000`,
 				cmdRunner: mockRunner,
 			}
 
-			Expect(cliClient.ExcludeProcesses([]fdbv1beta2.ProcessAddress{{
-				IPAddress: net.ParseIP("127.0.0.1"),
-				Port:      4500,
-			}})).NotTo(HaveOccurred())
+			Expect(cliClient.ExcludeProcesses(addresses)).NotTo(HaveOccurred())
 		})
 
 		BeforeEach(func() {
@@ -807,11 +805,31 @@ protocol fdb00b071010000`,
 				mockedError:  nil,
 				mockedOutput: []string{""},
 			}
+			// Pods with their own IP are excluded as a whole by their bare IP.
+			addresses = []fdbv1beta2.ProcessAddress{{IPAddress: net.ParseIP("127.0.0.1")}}
 		})
 
 		When("the cluster specifies that blocking exclusions should be used", func() {
 			It("should return that the exclusion command is called without no_wait", func() {
 				Expect(mockRunner.receivedArgs[0]).To(ContainElement("exclude 127.0.0.1"))
+			})
+		})
+
+		When("a process of a process group that shares the IP of its node is excluded", func() {
+			BeforeEach(func() {
+				addresses = []fdbv1beta2.ProcessAddress{{
+					IPAddress: net.ParseIP("127.0.0.1"),
+					Port:      4532,
+					Flags:     map[string]bool{"tls": true},
+				}}
+			})
+
+			It("should exclude only that process, without flags", func() {
+				Expect(mockRunner.receivedArgs[0]).To(ContainElement("exclude 127.0.0.1:4532"))
+			})
+
+			It("should not modify the addresses of the caller", func() {
+				Expect(addresses[0].Port).To(Equal(4532))
 			})
 		})
 
@@ -823,6 +841,22 @@ protocol fdb00b071010000`,
 			It("should return that the exclusion command is called with no_wait", func() {
 				Expect(mockRunner.receivedArgs[0]).To(ContainElement("exclude no_wait 127.0.0.1"))
 			})
+		})
+	})
+
+	When("splitting addresses and localities for the management API", func() {
+		It("should keep the ports of process addresses and drop their flags", func() {
+			localities, addresses := getAddressesAndLocalities([]fdbv1beta2.ProcessAddress{
+				{StringAddress: fdbv1beta2.FDBLocalityExclusionPrefix + ":storage-1"},
+				{IPAddress: net.ParseIP("10.1.0.7")},
+				{
+					IPAddress: net.ParseIP("10.1.0.7"),
+					Port:      4532,
+					Flags:     map[string]bool{"tls": true},
+				},
+			})
+			Expect(localities).To(ConsistOf(fdbv1beta2.FDBLocalityExclusionPrefix + ":storage-1"))
+			Expect(addresses).To(ConsistOf("10.1.0.7", "10.1.0.7:4532"))
 		})
 	})
 

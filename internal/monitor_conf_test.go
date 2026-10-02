@@ -63,6 +63,7 @@ var _ = Describe("monitor_conf", func() {
 					1,
 					fdbv1beta2.ImageTypeUnified,
 					nil,
+					false,
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(config.RunServers).NotTo(BeNil())
@@ -82,6 +83,7 @@ var _ = Describe("monitor_conf", func() {
 					1,
 					fdbv1beta2.ImageTypeUnified,
 					nil,
+					false,
 				)
 				Expect(err).To(HaveOccurred())
 				Expect(config.RunServers).To(BeNil())
@@ -97,6 +99,7 @@ var _ = Describe("monitor_conf", func() {
 					1,
 					fdbv1beta2.ImageTypeUnified,
 					nil,
+					false,
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(config.Version).To(Equal(&fdbv1beta2.Versions.Default.Version))
@@ -173,6 +176,7 @@ var _ = Describe("monitor_conf", func() {
 					1,
 					fdbv1beta2.ImageTypeUnified,
 					nil,
+					false,
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(config.Version).To(Equal(&fdbv1beta2.Versions.Default.Version))
@@ -192,6 +196,7 @@ var _ = Describe("monitor_conf", func() {
 					1,
 					fdbv1beta2.ImageTypeSplit,
 					nil,
+					false,
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(config.Version).To(Equal(&fdbv1beta2.Versions.Default.Version))
@@ -268,6 +273,7 @@ var _ = Describe("monitor_conf", func() {
 					2,
 					fdbv1beta2.ImageTypeUnified,
 					nil,
+					false,
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(config.Arguments).To(HaveLen(baseArgumentLength + 1))
@@ -300,6 +306,7 @@ var _ = Describe("monitor_conf", func() {
 					2,
 					fdbv1beta2.ImageTypeUnified,
 					nil,
+					false,
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(config.Arguments[6]).To(Equal(monitorapi.Argument{
@@ -325,6 +332,7 @@ var _ = Describe("monitor_conf", func() {
 					1,
 					fdbv1beta2.ImageTypeUnified,
 					nil,
+					false,
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(config.Arguments).To(HaveLen(baseArgumentLength))
@@ -360,6 +368,7 @@ var _ = Describe("monitor_conf", func() {
 					1,
 					fdbv1beta2.ImageTypeUnified,
 					nil,
+					false,
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(config.Arguments).To(HaveLen(baseArgumentLength + 1))
@@ -407,6 +416,7 @@ var _ = Describe("monitor_conf", func() {
 						1,
 						fdbv1beta2.ImageTypeUnified,
 						nil,
+						false,
 					)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(config.Arguments).To(HaveLen(baseArgumentLength))
@@ -443,6 +453,7 @@ var _ = Describe("monitor_conf", func() {
 					1,
 					fdbv1beta2.ImageTypeUnified,
 					nil,
+					false,
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(config.Arguments).To(HaveLen(baseArgumentLength))
@@ -479,6 +490,7 @@ var _ = Describe("monitor_conf", func() {
 					1,
 					fdbv1beta2.ImageTypeUnified,
 					nil,
+					false,
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(config.Arguments).To(HaveLen(baseArgumentLength))
@@ -526,6 +538,7 @@ var _ = Describe("monitor_conf", func() {
 					1,
 					fdbv1beta2.ImageTypeUnified,
 					nil,
+					false,
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(config.Arguments).To(HaveLen(baseArgumentLength))
@@ -578,6 +591,7 @@ var _ = Describe("monitor_conf", func() {
 						1,
 						fdbv1beta2.ImageTypeUnified,
 						nil,
+						false,
 					)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(config.Arguments).To(HaveLen(baseArgumentLength + 1))
@@ -624,6 +638,7 @@ var _ = Describe("monitor_conf", func() {
 						1,
 						fdbv1beta2.ImageTypeUnified,
 						nil,
+						false,
 					)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(config.Arguments).To(HaveLen(baseArgumentLength + 1))
@@ -660,6 +675,7 @@ var _ = Describe("monitor_conf", func() {
 						1,
 						fdbv1beta2.ImageTypeUnified,
 						nil,
+						false,
 					)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(config.Arguments).To(HaveLen(baseArgumentLength + 1))
@@ -689,6 +705,7 @@ var _ = Describe("monitor_conf", func() {
 							1,
 							fdbv1beta2.ImageTypeUnified,
 							nil,
+							false,
 						)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(config.Arguments).To(HaveLen(baseArgumentLength + 1))
@@ -733,6 +750,7 @@ var _ = Describe("monitor_conf", func() {
 							1,
 							fdbv1beta2.ImageTypeUnified,
 							nil,
+							false,
 						)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(config.Arguments).To(HaveLen(baseArgumentLength + 1))
@@ -776,6 +794,7 @@ var _ = Describe("monitor_conf", func() {
 						1,
 						fdbv1beta2.ImageTypeUnified,
 						nil,
+						false,
 					)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(config.Arguments).To(HaveLen(baseArgumentLength))
@@ -810,6 +829,7 @@ var _ = Describe("monitor_conf", func() {
 						1,
 						fdbv1beta2.ImageTypeUnified,
 						nil,
+						false,
 					)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(config.Arguments).To(HaveLen(baseArgumentLength))
@@ -848,6 +868,7 @@ var _ = Describe("monitor_conf", func() {
 					1,
 					fdbv1beta2.ImageTypeUnified,
 					nil,
+					false,
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(config.Arguments).To(HaveLen(baseArgumentLength))
@@ -873,6 +894,7 @@ var _ = Describe("monitor_conf", func() {
 					1,
 					fdbv1beta2.ImageTypeUnified,
 					nil,
+					false,
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(config.Arguments).To(HaveLen(baseArgumentLength + 1))
@@ -894,6 +916,7 @@ var _ = Describe("monitor_conf", func() {
 					1,
 					fdbv1beta2.ImageTypeUnified,
 					nil,
+					false,
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(config.Arguments).To(HaveLen(baseArgumentLength))
@@ -915,6 +938,7 @@ var _ = Describe("monitor_conf", func() {
 					1,
 					fdbv1beta2.ImageTypeUnified,
 					nil,
+					false,
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(config.Arguments).To(HaveLen(baseArgumentLength + 1))
@@ -936,6 +960,7 @@ var _ = Describe("monitor_conf", func() {
 					1,
 					fdbv1beta2.ImageTypeUnified,
 					nil,
+					false,
 				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(config.Arguments).To(HaveLen(baseArgumentLength + 1))

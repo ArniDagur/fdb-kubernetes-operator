@@ -235,10 +235,19 @@ func (client *AdminClient) GetStatus() (*fdbv1beta2.FoundationDBStatus, error) {
 			processIP = pod.Status.PodIP
 		}
 
+		portBlock, err := internal.GetPortBlock(&pod, processClass)
+		if err != nil {
+			return nil, err
+		}
+
 		for processIndex := 1; processIndex <= processCount; processIndex++ {
 			var fdbRoles []fdbv1beta2.FoundationDBStatusProcessRoleInfo
 
-			fullAddress := client.Cluster.GetFullAddress(processIP, processIndex)
+			fullAddress := client.Cluster.GetProcessGroupFullAddress(
+				&fdbv1beta2.ProcessGroupStatus{PortBlock: portBlock},
+				processIP,
+				processIndex,
+			)
 			excluded := client.processIsExcluded(fullAddress, processGroupID)
 
 			pClass, err := podmanager.GetProcessClass(client.Cluster, &pod)
@@ -390,7 +399,11 @@ func (client *AdminClient) GetStatus() (*fdbv1beta2.FoundationDBStatus, error) {
 			underMaintenance = true
 		}
 
-		fullAddress := client.Cluster.GetFullAddress(processGroup.Addresses[0], 1)
+		fullAddress := client.Cluster.GetProcessGroupFullAddress(
+			&processGroup,
+			processGroup.Addresses[0],
+			1,
+		)
 		status.Cluster.Processes[processGroup.ProcessGroupID] = fdbv1beta2.FoundationDBStatusProcessInfo{
 			Address:          fullAddress,
 			ProcessClass:     processGroup.ProcessClass,
@@ -646,6 +659,10 @@ func (client *AdminClient) processIsExcluded(
 	if addressExcluded {
 		return true
 	}
+	_, addressWithoutFlagsExcluded := client.ExcludedAddresses[fullAddress.StringWithoutFlags()]
+	if addressWithoutFlagsExcluded {
+		return true
+	}
 
 	if client.Cluster.UseLocalitiesForExclusion() {
 		localityExclusionString := fmt.Sprintf(
@@ -746,6 +763,15 @@ func (client *AdminClient) getExcludedAddresses() []fdbv1beta2.ProcessAddress {
 	for addr := range client.ExcludedAddresses {
 		ip := net.ParseIP(addr)
 		if ip == nil {
+			// Exclusions of a single process, e.g. of a process group that shares the IP of its node.
+			if !strings.HasPrefix(addr, fdbv1beta2.FDBLocalityExclusionPrefix) {
+				pAddr, err := fdbv1beta2.ParseProcessAddress(addr)
+				if err == nil && pAddr.IPAddress != nil {
+					excludedAddresses = append(excludedAddresses, pAddr)
+					continue
+				}
+			}
+
 			excludedAddresses = append(
 				excludedAddresses,
 				fdbv1beta2.ProcessAddress{StringAddress: addr},

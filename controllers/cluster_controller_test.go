@@ -4218,5 +4218,11 @@ func getConfigMapHash(
 
 	imageType := internal.GetImageType(pod)
 
-	return internal.GetDynamicConfHash(configMap, pClass, imageType, serversPerPod)
+	return internal.GetDynamicConfHash(
+		configMap,
+		pClass,
+		imageType,
+		serversPerPod,
+		internal.HasPortBlock(pod),
+	)
 }

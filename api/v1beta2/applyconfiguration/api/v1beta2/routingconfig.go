@@ -37,6 +37,9 @@ type RoutingConfigApplyConfiguration struct {
 	// service.
 	// The default is `cluster.local`.
 	DNSDomain *string `json:"dnsDomain,omitempty"`
+	// PortBlocks makes the operator assign every pod a unique block of ports from the port range, so that
+	// multiple pods can share an IP, for example with the hostNetwork public IP source.
+	PortBlocks *PortBlocksConfigApplyConfiguration `json:"portBlocks,omitempty"`
 }
 
 // RoutingConfigApplyConfiguration constructs a declarative configuration of the RoutingConfig type for use with
@@ -90,5 +93,13 @@ func (b *RoutingConfigApplyConfiguration) WithDefineDNSLocalityFields(value bool
 // If called multiple times, the DNSDomain field is set to the value of the last call.
 func (b *RoutingConfigApplyConfiguration) WithDNSDomain(value string) *RoutingConfigApplyConfiguration {
 	b.DNSDomain = &value
+	return b
+}
+
+// WithPortBlocks sets the PortBlocks field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PortBlocks field is set to the value of the last call.
+func (b *RoutingConfigApplyConfiguration) WithPortBlocks(value *PortBlocksConfigApplyConfiguration) *RoutingConfigApplyConfiguration {
+	b.PortBlocks = value
 	return b
 }

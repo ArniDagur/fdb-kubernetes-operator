@@ -23,7 +23,6 @@ package removals
 import (
 	"fmt"
 	"math"
-	"net"
 
 	"k8s.io/utils/ptr"
 
@@ -228,10 +227,9 @@ func getAddressesToValidateBeforeRemoval(
 			continue
 		}
 
-		// Add all addresses to make sure all seen addresses of a process are excluded.
-		for _, pAddr := range processGroup.Addresses {
-			addresses = append(addresses, fdbv1beta2.ProcessAddress{IPAddress: net.ParseIP(pAddr)})
-		}
+		// Add all addresses to make sure all seen addresses of a process are excluded. Process groups with a port block
+		// share the IP of their node, so they are identified by IP:port instead of a bare IP.
+		addresses = append(addresses, cluster.GetProcessGroupNetworkAddresses(processGroup)...)
 	}
 
 	if len(addresses) == 0 {

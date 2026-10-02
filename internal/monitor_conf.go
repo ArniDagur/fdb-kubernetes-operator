@@ -80,6 +80,7 @@ func GetStartCommandWithSubstitutions(
 		processCount,
 		imageType,
 		getIPFamilyFromPodIfPresent(currentPod),
+		HasPortBlock(currentPod),
 	)
 	if err != nil {
 		return "", err
@@ -114,7 +115,8 @@ func extractPlaceholderEnvVars(env map[string]string, arguments []monitorapi.Arg
 			if _, present := env[argument.Source]; !present {
 				env[argument.Source] = fmt.Sprintf("$%s", argument.Source)
 			}
-		} else if argument.ArgumentType == monitorapi.ConcatenateArgumentType {
+		} else if argument.ArgumentType == monitorapi.ConcatenateArgumentType ||
+			argument.ArgumentType == monitorapi.SumArgumentType {
 			extractPlaceholderEnvVars(env, argument.Values)
 		}
 	}
@@ -199,6 +201,7 @@ func getMonitorConfStartCommandLines(
 		processCount,
 		fdbv1beta2.ImageTypeSplit,
 		podIPFamily,
+		false,
 	)
 	if err != nil {
 		return nil, err
@@ -233,13 +236,15 @@ func getMonitorConfStartCommandLines(
 	return confLines, nil
 }
 
-// GetMonitorProcessConfiguration builds the monitor conf template for the unified image.
+// GetMonitorProcessConfiguration builds the monitor conf template for the unified image. If portBlocks is true, the
+// fdbserver ports are computed from the port block of the pod.
 func GetMonitorProcessConfiguration(
 	cluster *fdbv1beta2.FoundationDBCluster,
 	processClass fdbv1beta2.ProcessClass,
 	processCount int,
 	imageType fdbv1beta2.ImageType,
 	podIPFamily *int,
+	portBlocks bool,
 ) (monitorapi.ProcessConfiguration, error) {
 	version, err := monitorapi.ParseFdbVersion(cluster.Spec.Version)
 	if err != nil {
@@ -276,6 +281,7 @@ func GetMonitorProcessConfiguration(
 				imageType,
 				sampleAddresses,
 				currentPodIPFamily,
+				portBlocks,
 			),
 		},
 		monitorapi.Argument{Value: fmt.Sprintf("--class=%s", processClass)},
@@ -356,6 +362,7 @@ func GetMonitorProcessConfiguration(
 					imageType,
 					sampleAddresses,
 					currentPodIPFamily,
+					portBlocks,
 				),
 			},
 		)
@@ -509,6 +516,7 @@ func buildIPArgument(
 	imageType fdbv1beta2.ImageType,
 	sampleAddresses []fdbv1beta2.ProcessAddress,
 	podIPFamily int,
+	portBlocks bool,
 ) []monitorapi.Argument {
 	var leftIPWrap string
 	var rightIPWrap string
@@ -539,15 +547,37 @@ func buildIPArgument(
 			ipArgument.ArgumentType = monitorapi.EnvironmentArgumentType
 		}
 
+		// The sample address is the address of process 1 in the default layout. The port of process n is
+		// its port + 2 * (n - 1).
+		portArgument := monitorapi.Argument{
+			ArgumentType: monitorapi.ProcessNumberArgumentType,
+			Offset:       address.Port - 2,
+			Multiplier:   2,
+		}
+		// Pods with a port block use their block instead of the default layout, so the port
+		// is the start of the block plus the offset of the process.
+		if portBlocks {
+			portArgument = monitorapi.Argument{
+				ArgumentType: monitorapi.SumArgumentType,
+				Values: []monitorapi.Argument{
+					{
+						ArgumentType: monitorapi.EnvironmentArgumentType,
+						Source:       fdbv1beta2.EnvNamePortBlockStart,
+					},
+					{
+						ArgumentType: monitorapi.ProcessNumberArgumentType,
+						Offset:       address.Port - fdbv1beta2.DefaultProcessPortStart - 2,
+						Multiplier:   2,
+					},
+				},
+			}
+		}
+
 		arguments = append(
 			arguments,
 			ipArgument,
 			monitorapi.Argument{Value: fmt.Sprintf("%s:", rightIPWrap)},
-			monitorapi.Argument{
-				ArgumentType: monitorapi.ProcessNumberArgumentType,
-				Offset:       address.Port - 2,
-				Multiplier:   2,
-			},
+			portArgument,
 		)
 
 		flags := address.SortedFlags()
