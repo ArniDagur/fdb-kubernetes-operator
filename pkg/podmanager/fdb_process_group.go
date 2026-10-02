@@ -84,6 +84,5 @@ func GetPublicIPs(pod *corev1.Pod, log logr.Logger) []string {
 		return []string{pod.ObjectMeta.Annotations[fdbv1beta2.PublicIPAnnotation]}
 	}
 
-	// On the host network, the pod IP is the node IP.
 	return internal.GetPublicIPsForPod(pod, log)
 }
