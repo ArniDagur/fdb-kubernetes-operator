@@ -85,7 +85,7 @@ var _ = Describe("[api] port blocks", func() {
 			To(Equal("10.0.0.5:4533"))
 	})
 
-	When("validating a cluster with host networking", func() {
+	When("validating port blocks", func() {
 		var cluster *FoundationDBCluster
 		var mods *AllowedPodModifications
 
@@ -97,7 +97,6 @@ var _ = Describe("[api] port blocks", func() {
 						StorageEngine: StorageEngineSSD2,
 					},
 					Routing: RoutingConfig{
-						PublicIPSource: ptr.To(PublicIPSourceHostNetwork),
 						PortBlocks: &PortBlocksConfig{
 							PortRangeStart: 20000,
 							PortRangeEnd:   29999,
@@ -108,14 +107,10 @@ var _ = Describe("[api] port blocks", func() {
 			mods = &AllowedPodModifications{}
 		})
 
-		It("should accept each setting without the other", func() {
-			Expect(cluster.Validate(mods)).To(Succeed())
-			cluster.Spec.Routing.PublicIPSource = ptr.To(PublicIPSourcePod)
+		It("should accept port blocks with and without host networking", func() {
 			Expect(cluster.Validate(mods)).To(Succeed())
 			cluster.Spec.Routing.PublicIPSource = ptr.To(PublicIPSourceHostNetwork)
-			cluster.Spec.Routing.PortBlocks = nil
 			Expect(cluster.Validate(mods)).To(Succeed())
-			Expect(cluster.UsePortBlocks()).To(BeFalse())
 		})
 
 		DescribeTable("it should reject unsupported combinations",
@@ -160,9 +155,8 @@ var _ = Describe("[api] port blocks", func() {
 		)
 
 		It(
-			"should reject a pod template that sets the port block variable, even without host networking",
+			"should reject a pod template that sets the port block variable, even without port blocks",
 			func() {
-				cluster.Spec.Routing.PublicIPSource = nil
 				cluster.Spec.Routing.PortBlocks = nil
 				cluster.Spec.Processes = map[ProcessClass]ProcessSettings{
 					ProcessClassGeneral: {

@@ -298,17 +298,14 @@ func (address ProcessAddress) StringWithoutFlags() string {
 	return net.JoinHostPort(address.MachineAddress(), strconv.Itoa(address.Port))
 }
 
-// DefaultProcessPortStart is the TLS port of the first process in a pod that does not use a port block.
-const DefaultProcessPortStart = 4500
-
 // GetProcessPort returns the expected port for a given process number
 // and the tls setting.
 func GetProcessPort(processNumber int, tls bool) int {
 	if tls {
-		return DefaultProcessPortStart + 2*(processNumber-1)
+		return 4498 + 2*processNumber
 	}
 
-	return DefaultProcessPortStart + 2*(processNumber-1) + 1
+	return 4499 + 2*processNumber
 }
 
 // GetFullAddressList gets the full list of public addresses we should use for a

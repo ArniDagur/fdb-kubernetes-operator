@@ -220,8 +220,8 @@ func setMonitorConfForFilename(
 	return nil
 }
 
-// GetConfigMapMonitorConfEntry returns the specific key for the monitor conf in the ConfigMap. Pods that use the host
-// network have their own entry for the unified image.
+// GetConfigMapMonitorConfEntry returns the specific key for the monitor conf in the ConfigMap. Pods with a port block
+// have their own entry for the unified image.
 func GetConfigMapMonitorConfEntry(
 	pClass fdbv1beta2.ProcessClass,
 	imageType fdbv1beta2.ImageType,

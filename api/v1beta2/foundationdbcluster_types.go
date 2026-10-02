@@ -2566,9 +2566,9 @@ func (block PortBlock) End() int {
 }
 
 // ProcessPort returns the port of the given process number (1-based) in the block: the default layout of
-// GetProcessPort, shifted to the start of the block.
+// GetProcessPort, shifted so that the TLS port of process 1 is the start of the block.
 func (block PortBlock) ProcessPort(processNumber int, tls bool) int {
-	return block.Start - DefaultProcessPortStart + GetProcessPort(processNumber, tls)
+	return block.Start - GetProcessPort(1, true) + GetProcessPort(processNumber, tls)
 }
 
 // MetricsPort returns the port of the fdb-kubernetes-monitor metrics endpoint in the block.

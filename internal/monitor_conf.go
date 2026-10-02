@@ -566,7 +566,7 @@ func buildIPArgument(
 					},
 					{
 						ArgumentType: monitorapi.ProcessNumberArgumentType,
-						Offset:       address.Port - fdbv1beta2.DefaultProcessPortStart - 2,
+						Offset:       address.Port - fdbv1beta2.GetProcessPort(1, true) - 2,
 						Multiplier:   2,
 					},
 				},

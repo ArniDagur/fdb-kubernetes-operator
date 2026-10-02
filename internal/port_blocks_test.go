@@ -292,7 +292,7 @@ var _ = Describe("port blocks", func() {
 			})
 		})
 
-		When("host networking is disabled but the process group still has a block", func() {
+		When("port blocks are turned off but the process group still has a block", func() {
 			BeforeEach(func() {
 				cluster.Spec.Routing.PublicIPSource = nil
 				cluster.Spec.Routing.PortBlocks = nil
@@ -339,7 +339,7 @@ var _ = Describe("port blocks", func() {
 		})
 	})
 
-	When("generating the monitor configuration for a host-networked pod", func() {
+	When("generating the monitor configuration for a pod with a port block", func() {
 		env := map[string]string{
 			fdbv1beta2.EnvNamePublicIP:       "10.1.0.7",
 			fdbv1beta2.EnvNamePortBlockStart: "20100",
