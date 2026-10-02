@@ -18,7 +18,7 @@ type RoutingConfigApplyConfiguration struct {
 	// PublicIPSource specifies what source a process should use to get its
 	// public IPs.
 	//
-	// This supports the values `pod` and `service`.
+	// This supports the values `pod`, `service`, and `hostNetwork`.
 	PublicIPSource *apiv1beta2.PublicIPSource `json:"publicIPSource,omitempty"`
 	// PodIPFamily tells the pod which family of IP addresses to use.
 	// You can use 4 to represent IPv4, and 6 to represent IPv6.

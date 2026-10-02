@@ -111,6 +111,23 @@ func NewMockClientWithHooksAndIndexes(
 			return nil
 		}
 
+		// Pods in the host network namespace share the IP of their node.
+		if pod.Spec.HostNetwork && pod.Status.PodIP == "" {
+			hostNodeName := pod.Spec.NodeName
+			if hostNodeName == "" {
+				hostNodeName = fmt.Sprintf("%s-node", pod.Name)
+			}
+
+			nodeIP, err := client.getOrAssignNodeIP(ctx, hostNodeName)
+			if err != nil {
+				return err
+			}
+
+			pod.Status.HostIP = nodeIP
+			pod.Status.PodIP = nodeIP
+			pod.Status.PodIPs = []corev1.PodIP{{IP: nodeIP}}
+		}
+
 		if pod.Status.PodIP == "" {
 			v4Address := client.generatePodIPv4()
 			pod.Status.PodIP = v4Address
@@ -527,6 +544,34 @@ func (client *MockClient) SetPodIntoFailed(
 	pod.CreationTimestamp = metav1.Time{Time: time.Now().Add(-30 * time.Minute)}
 
 	return client.Update(ctx, pod)
+}
+
+// getOrAssignNodeIP returns the internal IP of the node, and creates the node or assigns it an IP if needed.
+func (client *MockClient) getOrAssignNodeIP(ctx context.Context, nodeName string) (string, error) {
+	node := &corev1.Node{}
+	err := client.Get(ctx, ctrlClient.ObjectKey{Name: nodeName}, node)
+	if err != nil && !errors.IsNotFound(err) {
+		return "", err
+	}
+
+	for _, address := range node.Status.Addresses {
+		if address.Type == corev1.NodeInternalIP {
+			return address.Address, nil
+		}
+	}
+
+	nodeIP := client.generatePodIPv4()
+	node.Status.Addresses = append(node.Status.Addresses, corev1.NodeAddress{
+		Type:    corev1.NodeInternalIP,
+		Address: nodeIP,
+	})
+
+	if errors.IsNotFound(err) {
+		node.Name = nodeName
+		return nodeIP, client.Create(ctx, node)
+	}
+
+	return nodeIP, client.Update(ctx, node)
 }
 
 // RemovePodIP sets the IP address of the Pod to an empty string
